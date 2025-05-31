@@ -183,6 +183,7 @@ struct Project
 #include <filesystem>
 namespace fs = std::filesystem;
 
+static let name_tag = String( "##NAME##" );
 
 static let new_project_template = String(R"(
 #define INCLUDE_AS_HEADER
@@ -214,19 +215,6 @@ BuildCfgFunPtr build_cfg = nullptr;
 
 fun main( i32 argc, char* argv[] ) -> i32
 {
-    // Create the build.cpp file if it doesn't exist already
-    {
-        // TODO: Check the timestamp to determine if it needs to be recompiled
-        if( !fs::is_regular_file( "build.cpp" ) )
-        {
-            var* build_file = fopen( "build.cpp", "w" );
-            assert( build_file );
-            // TODO: Get the current dir name and use it to replace ##NAME## in the template
-            fwrite( new_project_template.c_str(), sizeof(char), new_project_template.length(), build_file );
-            fclose( build_file );
-        }
-    }
-
     // Create the directory structure
     {
         fs::create_directory( "vendor" );
@@ -240,6 +228,23 @@ fun main( i32 argc, char* argv[] ) -> i32
             assert( main_file );
             fwrite( new_main_file_template.c_str(), sizeof(char), new_main_file_template.length(), main_file );
             fclose( main_file );
+        }
+
+        if( !fs::is_regular_file( "build.cpp" ) )
+        {
+            var* build_file = fopen( "build.cpp", "w" );
+            assert( build_file );
+
+            // Replace the project's name with the current folder's
+            let current_folder_name = fs::current_path().stem().string();
+            var filled_template = new_project_template;
+            filled_template.replace(
+                filled_template.find( name_tag ),
+                name_tag.length(),
+                current_folder_name );
+
+            fwrite( filled_template.c_str(), sizeof(char), filled_template.length(), build_file );
+            fclose( build_file );
         }
     }
 
