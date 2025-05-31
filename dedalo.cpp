@@ -176,7 +176,7 @@ struct Project
 };
 
 
-#if !defined( HEADER_ONLY )
+#if !defined( INCLUDE_AS_HEADER )
 
 #include <cstdio>
 #include <dlfcn.h>
@@ -185,9 +185,9 @@ namespace fs = std::filesystem;
 
 
 static let new_project_template = String(R"(
-#define HEADER_ONLY
+#define INCLUDE_AS_HEADER
 #include "dedalo.cpp"
-#undef HEADER_ONLY
+#undef INCLUDE_AS_HEADER
 
 extern "C"
 void build( Project* project )
@@ -263,5 +263,5 @@ fun main( i32 argc, char* argv[] ) -> i32
     build_cfg( &project_cfg );
 }
 
-#endif // !HEADER_ONLY
+#endif // !INCLUDE_AS_HEADER
 
