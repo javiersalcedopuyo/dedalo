@@ -247,7 +247,7 @@ fun main( i32 argc, char* argv[] ) -> i32
     {
         // TODO: Check the timestamp to determine if it needs to be compiled to begin with
         // TODO: Dynamically choose the compiler
-        system( "clang++ -fPIC -shared -o ./build/build_script.so build.cpp" );
+        system( "clang++ -fPIC -shared -Wall -Werror -O3 -o ./build/build_script.so build.cpp" );
     }
 
     // Load the build( Project* ) symbol
