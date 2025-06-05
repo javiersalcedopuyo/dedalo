@@ -3,8 +3,13 @@
 
 // STL bloat
 #include <string>
+#include <format>
+#include <iostream>
 #include <vector>
 #include <unordered_map>
+
+
+#define ENABLE_LOGS() 1
 
 
 // Rust at home ///////////////////////////////////////////////////////////////
@@ -29,6 +34,7 @@ using f32 = float;
 using f64 = double;
 
 using String = std::string;
+#define fmt std::format
 
 template<typename T>
 using List = std::vector<T>;
@@ -59,7 +65,21 @@ private:
 #define defer( f ) const auto CONCATENATE( _deferred, __COUNTER__ ) = Deferrable( [&](){ f; } );
 
 
-#define UNIMPLEMENTED() printf( "UNIMPLEMENTED!\n" )
+#define println(...) std::cout << fmt(__VA_ARGS__) << std::endl;
+
+
+ // TODO: Support MSVC macros
+#if ENABLE_LOGS()
+    #define LOG(...)        println( "💬 INFO [{} @ {} ln{}]: {}",    __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+    #define WARNING(...)    println( "⚠️ WARNING [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+    #define ERROR(...)      println( "⛔️ ERROR [{} @ {} ln{}]: {}",   __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+    #define UNIMPLEMENTED() println( "🚧 UNIMPLEMENTED [{} @ {} ln{}]", __func__, __FILE__, __LINE__ )
+#else // ENABLE_LOGS
+    #define INFO( msg... )
+    #define WARNING( msg... )
+    #define ERROR( msg... )
+    #define UNIMPLEMENTED()
+#endif // ENABLE_LOGS
 
 
 enum [[nodiscard]] ResultCode
@@ -232,7 +252,7 @@ fun init() -> ResultCode
 {
     if( fs::is_regular_file( "build.cpp" ) )
     {
-        printf( "Project already initialized. Skipping.\n" );
+        WARNING( "Project already initialized. Skipping." );
         return ALREADY_INITIALIZED;
     }
 
@@ -243,8 +263,7 @@ fun init() -> ResultCode
         fs::create_directory( "build"  );
         {
             fs::create_directory( "build/bin"  );
-            fs::create_directory( "build/src"  );
-            fs::create_directory( "build/dependencies"  );
+            // TODO: Create a cache and/or other build system files (ninja, make, CMake...)
         }
 
         fs::create_directory( "src" );
@@ -278,8 +297,7 @@ fun init() -> ResultCode
 
 fun build( const Project& project ) -> ResultCode
 {
-    printf( "Starting build of project \"%s\"...\n", project.name.c_str() );
-    defer( printf( "...Done.\n" ) );
+    LOG( "Starting build of project \"{}\"...", project.name );
 
     UNIMPLEMENTED();
 
@@ -288,6 +306,7 @@ fun build( const Project& project ) -> ResultCode
     // TODO: Link any dynamic libraries into their corresponding .so in build/bin/
     // TODO: Link everything into the executable in build/bin/
 
+    LOG( "Project \"{}\" built succesfully", project.name );
     return OK;
 }
 
@@ -300,7 +319,7 @@ fun build() -> ResultCode
         // TODO: Dynamically choose the compiler
         if( let error_code = system( "clang++ -fPIC -shared -Wall -Werror -O3 -o ./build/build_script.so build.cpp" ) )
         {
-            printf( "Build script compilation failed with error %d.\n", error_code );
+            ERROR( "Build script compilation failed with error {}.", error_code );
             return BUILD_SCRIPT_LOAD_FAILED;
         }
     }
@@ -310,13 +329,13 @@ fun build() -> ResultCode
         var* dll = dlopen( "./build/build_script.so", RTLD_NOW );
         if( !dll )
         {
-            printf( "ERROR: Couldn't load build script's DLL.\n" );
+            ERROR( "Couldn't load build script's DLL." );
             return BUILD_SCRIPT_LOAD_FAILED;
         }
         build_cfg = (BuildCfgFunPtr) dlsym(dll, "build");
         if( !build_cfg )
         {
-            printf( "ERROR: Couldn't load build function's symbol.\n" );
+            ERROR( "Couldn't load build function's symbol." );
             return BUILD_SCRIPT_LOAD_FAILED;
         }
         // No need to close the dll, the OS will clean up after us.
@@ -348,7 +367,7 @@ fun main( i32 argc, char* argv[] ) -> i32
 {
     if( argc < 2 )
     {
-        printf( "No command provided.\n" );
+        ERROR( "No command provided." );
         return INVALID_ARGUMENT;
     }
 
@@ -376,7 +395,7 @@ fun main( i32 argc, char* argv[] ) -> i32
     }
     else
     {
-        printf( "ERROR: Unrecognized command %s.\n", cmd.c_str() );
+        ERROR( "Unrecognized command '{}'.", cmd );
         return INVALID_ARGUMENT;
     }
     return OK;
