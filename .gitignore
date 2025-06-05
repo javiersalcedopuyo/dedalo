@@ -6,3 +6,5 @@ src/
 tests/
 vendor/
 dedalo.dSYM/
+.cache/
+*.bkp
