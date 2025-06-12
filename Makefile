@@ -5,9 +5,9 @@ CFLAGS = -std=c++20\
 		 -fsanitize=undefined,address\
 		 -O0 -g
 
-dedalo: dedalo.cpp
+ddl: dedalo.cpp
 	@echo "Compiling..."
-	@time $(CC) $(CFLAGS) dedalo.cpp -o dedalo
+	@time $(CC) $(CFLAGS) dedalo.cpp -o ddl
 	@echo '[' > compile_commands.json
 	@cat tmp.json >> compile_commands.json
 	@echo ']' >> compile_commands.json
@@ -17,10 +17,10 @@ run: dedalo
 	./dedalo
 
 clean:
-	rm -rf dedalo compile_commands.json *.dSYM
+	rm -rf ddl compile_commands.json *.dSYM
 
 reset:
 	@echo "Cleaning Dedalo itself..."
-	rm -rf dedalo compile_commands.json *.dSYM
+	rm -rf ddl compile_commands.json *.dSYM
 	@echo "Cleaning Dedalo's output..."
 	rm -rf dependencies tests src build build.cpp

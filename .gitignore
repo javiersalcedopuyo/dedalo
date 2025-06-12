@@ -1,10 +1,10 @@
-dedalo
+ddl
 compile_commands.json
 build.cpp
 build/
 src/
 tests/
 vendor/
-dedalo.dSYM/
+ddl.dSYM/
 .cache/
 *.bkp
