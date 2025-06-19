@@ -478,7 +478,7 @@ static fun compile_config() -> ResultCode
 }
 
 
-static fun build() -> ResultCode
+static fun build( const bool run_after_build ) -> ResultCode
 {
     // Make sure the build directories exist
     fs::create_directories( obj_output_dir );
@@ -519,10 +519,23 @@ static fun build() -> ResultCode
         // TODO: Fetch any remote dependencies and place them in libs/
         // TODO: Link any dynamic libraries into their corresponding .so in build/bin/
 
-        var result = compile( project, *target, cpp_paths );
-        return result != OK
-            ? result
-            : link( project );
+        if( let error = compile( project, *target, cpp_paths ) )
+        {
+            return error;
+        }
+        if( let error = link( project ) )
+        {
+            return error;
+        }
+        if( run_after_build )
+        {
+            let command = "./" + bin_output_dir + "/" + project.name;
+            if( system( command.c_str() ) != OK )
+            {
+                return RUN_COMMAND_FAILED;
+            }
+        }
+        return OK;
     }
     else
     {
@@ -574,17 +587,11 @@ fun main( i32 argc, char* argv[] ) -> i32
     else if( cmd == "build" )
     {
         // TODO: Provide a specific target
-        return build();
+        return build( /*run_after_build*/ false );
     }
     else if( cmd == "run" )
     {
-        // TODO: Pass arguments
-        var build_result = build();
-        if( build_result == OK )
-        {
-            build_result = run();
-        }
-        return build_result;
+        return build( /*run_after_build*/ true );
     }
     else if( cmd == "clean" )
     {
