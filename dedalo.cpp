@@ -565,8 +565,8 @@ fun test() -> ResultCode
 
 fun clean() -> ResultCode
 {
-    // TODO: Delete the build folder, compile_commands.json, etc
-    UNIMPLEMENTED();
+    fs::remove_all( "./build" );
+    fs::create_directories( obj_output_dir );
     return OK;
 }
 
