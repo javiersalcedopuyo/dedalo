@@ -449,19 +449,43 @@ static fun link( const Project& project ) -> ResultCode
 }
 
 
+static fun needs_recompiling( const Path& source, const Path& binary ) -> bool
+{
+    assert( fs::exists( source ) );
+    return !fs::exists( binary )
+        or fs::last_write_time( source ) > fs::last_write_time( binary );
+}
+
+
+static fun compile_config() -> ResultCode
+{
+    constant so_path  = "./build/build_script.so";
+    constant cpp_path = "./build.cpp";
+
+    if( !needs_recompiling( cpp_path, so_path ) )
+    {
+        return OK;
+    }
+
+    LOG( "Compiling build config..." );
+    // TODO: Dynamically choose the compiler
+    if( let error = system( "clang++ --std=c++20 -fPIC -shared -o ./build/build_script.so build.cpp" ) )
+    {
+        ERROR( "Build script compilation failed with error {}.", error );
+        return BUILD_SCRIPT_LOAD_FAILED;
+    }
+    return OK;
+}
+
+
 static fun build() -> ResultCode
 {
     // Make sure the build directories exist
     fs::create_directories( obj_output_dir );
 
-    // Compile the build.cpp
-        // TODO: Check the timestamp to determine if it needs to be compiled to begin with
-        // TODO: Dynamically choose the compiler
-    LOG( "Compiling build config..." );
-    if( let error = system( "clang++ --std=c++20 -fPIC -shared -o ./build/build_script.so build.cpp" ) )
+    if( let error = compile_config() )
     {
-        ERROR( "Build script compilation failed with error {}.", error );
-        return BUILD_SCRIPT_LOAD_FAILED;
+        return error;
     }
 
     LOG( "Loading build config..." );
