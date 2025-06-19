@@ -7,6 +7,8 @@
 #include <iostream>
 #include <vector>
 #include <unordered_map>
+#include <filesystem>
+#include <optional>
 
 
 #define ENABLE_LOGS() 1
@@ -19,6 +21,8 @@
 #define constant static constexpr auto
 
 #define as static_cast
+
+namespace fs = std::filesystem;
 
 using u8  = uint8_t;
 using u16 = uint16_t;
@@ -37,13 +41,17 @@ using String = std::string;
 #define fmt std::format
 
 template<typename T>
+using Opt = std::optional<T>;
+[[ maybe_unused ]] constant None = std::nullopt;
+
+template<typename T>
 using List = std::vector<T>;
 
 template<typename K, typename V>
 using Dictionary = std::unordered_map<K, V>;
 
 // TODO: Do something more sophisticated
-using Path = String;
+using Path = fs::path;
 
 // defer //////////////////////////////////////////////////////////////////////
 template<typename Lambda>
@@ -82,6 +90,9 @@ private:
 #endif // ENABLE_LOGS
 
 
+#define unreachable() { ERROR("Unreachable point reached!"); abort(); }
+
+
 enum [[nodiscard]] ResultCode
 {
     UNKNOWN_ERROR       = -1,
@@ -92,7 +103,9 @@ enum [[nodiscard]] ResultCode
     INVALID_GENERATOR,
     ALREADY_INITIALIZED,
     BUILD_SCRIPT_LOAD_FAILED,
-
+    COMPILATION_FAILED,
+    LINKING_FAILED,
+    RUN_COMMAND_FAILED,
 };
 
 
@@ -171,6 +184,15 @@ struct Project
     constexpr fun AddTarget( const Target&& target ) { targets[ target.name ] = target; }
     constexpr fun AddDependency( const Dependency&& dependency ) { dependencies[ dependency.name ] = dependency; }
 
+    fun find_target( const String& name ) -> Target*
+    {
+        let iter = targets.find( name );
+        if( iter == targets.end() )
+            return nullptr;
+
+        return &(iter->second);
+    }
+
     String       name = "INVALID";
     String       description;
     Version      version;
@@ -215,8 +237,6 @@ struct Project
 
 #include <cstdio>
 #include <dlfcn.h>
-#include <filesystem>
-namespace fs = std::filesystem;
 
 static let name_tag = String( "##NAME##" );
 
@@ -244,6 +264,11 @@ int main( int argc, char* argv[] )
 )");
 
 
+static let include_paths  = String(" -Isrc -Ilibs"); // TODO: Make this an array of paths?
+static let bin_output_dir = String( "./build/bin" );
+static let obj_output_dir = bin_output_dir + "/obj";
+
+
 using BuildCfgFunPtr = void(*)(Project*);
 BuildCfgFunPtr build_cfg = nullptr;
 
@@ -258,13 +283,10 @@ fun init() -> ResultCode
 
     // Create the directory structure
     {
-        fs::create_directory( "dependencies" );
-        fs::create_directory( "tests"  );
-        fs::create_directory( "build"  );
-        {
-            fs::create_directory( "build/bin"  );
-            // TODO: Create a cache and/or other build system files (ninja, make, CMake...)
-        }
+        fs::create_directory( "libs" );
+        // TODO: fs::create_directory( "tests"  );
+        fs::create_directories( obj_output_dir );
+        // TODO: Create a cache and/or other build system files (ninja, make, CMake...)
 
         fs::create_directory( "src" );
         {
@@ -295,36 +317,154 @@ fun init() -> ResultCode
 }
 
 
-fun build( const Project& project ) -> ResultCode
+static fun gather_files(
+    const Path&       in_path,
+    const String&     extension, // TODO: Support multiple extensions
+          List<Path>* paths )
 {
-    LOG( "Starting build of project \"{}\"...", project.name );
+    assert( paths );
 
-    UNIMPLEMENTED();
+    if( !fs::is_directory( in_path ) )
+    {
+        WARNING("Path '{}' is not a directory.", in_path.string() );
+        return;
+    }
 
-    // TODO: Fetch any remote dependencies and place them in dependencies/
-    // TODO: Compile each file in src/ and dependencies/ into .o in their corresponding directories in build/
-    // TODO: Link any dynamic libraries into their corresponding .so in build/bin/
-    // TODO: Link everything into the executable in build/bin/
+    for( let &entry: fs::directory_iterator( in_path ) )
+    {
+        if( fs::is_directory( entry ) )
+            gather_files( entry.path(), extension, paths ); // Recursion, yay!
 
-    LOG( "Project \"{}\" built succesfully", project.name );
+        if( fs::is_regular_file( entry ) and entry.path().extension() == extension )
+        {
+            LOG( "Source file found: {}", entry.path().string() );
+            paths->push_back( entry.path() );
+        }
+    }
+}
+
+
+static constexpr fun get_compiler_name( const Compiler compiler ) -> String
+{
+    switch (compiler)
+    {
+        case Compiler::Clang: return "clang++";
+        case Compiler::GCC:   return "gcc";
+        case Compiler::MSVC:  return "CL";
+        default: unreachable();
+    }
+}
+
+
+static constexpr fun get_flags_from( const Target& target ) -> String
+{
+    var result = String();
+    for( u32 i = 0; i < target.compiler_args.size(); ++i )
+    {
+        result += " -" + target.compiler_args[i];
+    }
+    return result;
+}
+
+
+static constexpr fun get_defines_from( const Target& target ) -> String
+{
+    var result = String();
+    for( u32 i = 0; i < target.defines.size(); ++i )
+    {
+        result += " -D" + target.defines[i];
+    }
+    return result;
+}
+
+
+static fun compile(
+    const Project&    project,
+    const Target&     target,
+    const List<Path>& cpp_paths ) -> ResultCode
+{
+    LOG("Compiling...");
+    // TODO: Spread the compilation across multiple threads
+
+    let compiler_name  = get_compiler_name( project.compiler );
+    let compiler_flags = get_flags_from( target );
+    let defines        = get_defines_from( target );
+
+    for( let& source_file: cpp_paths )
+    {
+        let command = fmt(
+            "{} -std=c++{} {} {} -O{} {} -c {} -o {}/{}.o",
+            compiler_name,
+            project.cpp_version,
+            compiler_flags,
+            defines,
+            target.optimization_level,
+            include_paths,
+            source_file.string(),
+            obj_output_dir,
+            source_file.stem().string() );
+
+        // TODO: Accumulate the errors and continue compiling?
+        if( let error = system( command.c_str() ) )
+        {
+            ERROR( "Compilation of file \"{}\" failed with error {}.\n"
+                   "Command:\n\t{}",
+                      source_file.filename().string(),
+                      error,
+                      command );
+            return COMPILATION_FAILED;
+        }
+    }
     return OK;
 }
 
 
-fun build() -> ResultCode
+static fun link( const Project& project ) -> ResultCode
 {
-    // Compile the build.cpp
+    LOG("Linking...");
+    var command = get_compiler_name( project.compiler );
+
+    // TODO: Link libraries
+    command += " -fsanitize=address"; // FIXME: This should be done automatically
+
+    var any_obj_files_found = false;
+    for( let& entry: fs::directory_iterator( obj_output_dir ) )
     {
+        if( !fs::is_regular_file( entry ) or entry.path().extension() != ".o" )
+        {
+            continue;
+        }
+        command += fmt( " {}", entry.path().string() );
+        any_obj_files_found = true;
+    }
+    assert( any_obj_files_found );
+    command += fmt( " -o {}/{}", bin_output_dir, project.name );
+
+    if( system( command.c_str() ) != OK )
+    {
+        ERROR( "Failed linking.\nCommand:\n\t{}", command );
+        return LINKING_FAILED;
+    }
+    return OK;
+}
+
+
+static fun build() -> ResultCode
+{
+    // Make sure the build directories exist
+    fs::create_directories( obj_output_dir );
+
+    // Compile the build.cpp
         // TODO: Check the timestamp to determine if it needs to be compiled to begin with
         // TODO: Dynamically choose the compiler
-        if( let error_code = system( "clang++ -fPIC -shared -Wall -Werror -O3 -o ./build/build_script.so build.cpp" ) )
-        {
-            ERROR( "Build script compilation failed with error {}.", error_code );
-            return BUILD_SCRIPT_LOAD_FAILED;
-        }
+    LOG( "Compiling build config..." );
+    if( let error = system( "clang++ --std=c++20 -fPIC -shared -o ./build/build_script.so build.cpp" ) )
+    {
+        ERROR( "Build script compilation failed with error {}.", error );
+        return BUILD_SCRIPT_LOAD_FAILED;
     }
 
-    // Load the build( Project* ) symbol
+    LOG( "Loading build config..." );
     {
         var* dll = dlopen( "./build/build_script.so", RTLD_NOW );
         if( !dll )
@@ -343,11 +483,42 @@ fun build() -> ResultCode
 
     var project = Project();
     build_cfg( &project );
-    return build( project );
+
+    if( let* target = project.find_target( project.default_target ) )
+    {
+        LOG( "Starting build of project \"{}\" for target \"{}\"...", project.name, target->name );
+
+        // Find all the source files
+        var cpp_paths = List<Path>{};
+        gather_files( "src", ".cpp", &cpp_paths ); // TODO: Add support for source files with different extensions
+
+        // TODO: Fetch any remote dependencies and place them in libs/
+        // TODO: Link any dynamic libraries into their corresponding .so in build/bin/
+
+        var result = compile( project, *target, cpp_paths );
+        return result != OK
+            ? result
+            : link( project );
+    }
+    else
+    {
+        return INVALID_TARGET;
+    }
 }
 
 
 fun run() -> ResultCode
+{
+    let project_name = fs::current_path().stem().string();
+    let command = "./" + bin_output_dir + "/" + project_name;
+
+    return system( command.c_str() ) == OK
+        ? OK
+        : RUN_COMMAND_FAILED;
+}
+
+
+fun test() -> ResultCode
 {
     // TODO:
     UNIMPLEMENTED();
@@ -355,9 +526,9 @@ fun run() -> ResultCode
 }
 
 
-fun test() -> ResultCode
+fun clean() -> ResultCode
 {
-    // TODO:
+    // TODO: Delete the build folder, compile_commands.json, etc
     UNIMPLEMENTED();
     return OK;
 }
@@ -378,16 +549,22 @@ fun main( i32 argc, char* argv[] ) -> i32
     }
     else if( cmd == "build" )
     {
+        // TODO: Provide a specific target
         return build();
     }
     else if( cmd == "run" )
     {
+        // TODO: Pass arguments
         var build_result = build();
         if( build_result == OK )
         {
             build_result = run();
         }
         return build_result;
+    }
+    else if( cmd == "clean" )
+    {
+        return clean();
     }
     else if( cmd == "test" )
     {
