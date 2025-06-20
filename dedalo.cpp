@@ -287,6 +287,7 @@ int main( int argc, char* argv[] )
 
 
 static let include_paths  = String(" -Isrc -Ilibs"); // TODO: Make this an array of paths?
+static let dep_output_dir = String( "./build/dep" );
 static let bin_output_dir = String( "./build/bin" );
 static let obj_output_dir = bin_output_dir + "/obj";
 
@@ -429,11 +430,12 @@ static fun compile(
     let compiler_flags = get_flags_from( target );
     let defines        = get_defines_from( target );
 
+    // TODO: Use the dependency files in `build/dep` to only compile out of date files
 
     for( let& source_file: cpp_paths )
     {
         let command = fmt(
-            "{} -std=c++{} {} {} -O{} {} -c {} -o {}/{}.o",
+            "{} -std=c++{} {} {} -O{} {} -c {} -o {}/{}.o -MMD -MF {}/{}.o.d",
             compiler_name,
             project.cpp_version,
             compiler_flags,
@@ -442,6 +444,8 @@ static fun compile(
             include_paths,
             source_file.string(),
             obj_output_dir,
+            source_file.stem().string(),
+            dep_output_dir,
             source_file.stem().string() );
 
         LOG( "{}", command );
@@ -529,6 +533,7 @@ static fun build( const bool run_after_build ) -> ResultCode
 {
     // Make sure the build directories exist
     fs::create_directories( obj_output_dir );
+    fs::create_directories( dep_output_dir );
 
     if( let error = compile_config() )
     {
