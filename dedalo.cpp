@@ -359,7 +359,7 @@ static fun gather_files(
 
         if( fs::is_regular_file( entry ) and entry.path().extension() == extension )
         {
-            LOG( "Source file found: {}", entry.path().string() );
+            // LOG( "File found: {}", entry.path().string() );
             paths->push_back( entry.path() );
         }
     }
@@ -470,17 +470,19 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
 
     // TODO: Link libraries
 
-    var any_obj_files_found = false;
-    for( let& entry: fs::directory_iterator( obj_output_dir ) )
+    // Add the compiled .o files
     {
-        if( !fs::is_regular_file( entry ) or entry.path().extension() != ".o" )
+        var obj_paths = List<Path>();
+        gather_files( obj_output_dir, ".o", &obj_paths );
+
+        assert( !obj_paths.empty() && "No compiled binaries to link?" );
+
+        for( let& path: obj_paths )
         {
-            continue;
+            command += " " + path.string(); // FIXME: This is probably doing too many allocations
         }
-        command += fmt( " {}", entry.path().string() );
-        any_obj_files_found = true;
     }
-    assert( any_obj_files_found );
+
     command += fmt( " -o {}/{}", bin_output_dir, project.name );
 
     LOG( "{}", command );
