@@ -191,9 +191,20 @@ struct Project
         default_target(             args.default_target )
     {}
 
-    // TODO: Add some validation
-    constexpr fun AddTarget( const Target&& target ) { targets[ target.name ] = target; }
-    constexpr fun AddDependency( const Dependency&& dependency ) { dependencies[ dependency.name ] = dependency; }
+    // TODO: Add more validation
+    constexpr fun AddDependency( const Dependency&& dependency )
+    {
+        assert( dependency.name != "UNNAMED" );
+        dependencies[ dependency.name ] = dependency;
+    }
+
+    // TODO: Add more validation
+    constexpr fun AddTarget( const Target&& target )
+    {
+        assert( target.name != "UNNAMED" );
+        assert( target.name != "All" && "`All` is a reserved target name" );
+        targets[ target.name ] = target;
+    }
 
     fun find_target( const String& name ) -> Target*
     {
@@ -204,7 +215,7 @@ struct Project
         return &(iter->second);
     }
 
-    String       name = "INVALID";
+    String       name = "UNNAMED";
     String       description;
     Version      version;
     List<String> authors;
@@ -541,6 +552,7 @@ static fun build( const bool run_after_build ) -> ResultCode
 
     var project = Project();
     build_cfg( &project );
+    assert( project.name != "UNNAMED" );
 
     if( let* target = project.find_target( project.default_target ) )
     {
