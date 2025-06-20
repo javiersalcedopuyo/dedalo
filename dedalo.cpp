@@ -233,7 +233,7 @@ struct Project
             .name               = "Debug",
             .optimization_level = 0,
             .sanitizers         = ASan | UBSan,
-            .defines            = { "DEBUG", "NDEBUG" },
+            .defines            = { "DEBUG" },
             .compiler_args      = {
                 "g",
                 "Wall",
