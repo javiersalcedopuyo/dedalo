@@ -112,6 +112,16 @@ enum [[nodiscard]] ResultCode
 enum struct Compiler: u8 { Clang, GCC, MSVC };
 
 
+// TODO: Add more https://clang.llvm.org/docs/UsersManual.html#controlling-code-generation
+enum Sanitizer: u8
+{
+    No_Sanitizers = 0,
+    ASan  = 1 << 0,
+    UBSan = 1 << 1,
+    TSan  = 1 << 2,
+};
+
+
 struct Version
 {
     u8 major = 0;
@@ -122,11 +132,12 @@ struct Version
 
 struct Target
 {
-    String       name = "UNNAMED"; // Redundant but convenient
+    String       name               = "UNNAMED"; // Redundant but convenient
     u8           optimization_level = 0;
-    List<String> defines = {};
-    List<String> compiler_args = {};
-    List<Path>   ignored_paths = {};
+    u8           sanitizers         = No_Sanitizers;
+    List<String> defines            = {};
+    List<String> compiler_args      = {};
+    List<Path>   ignored_paths      = {};
 };
 
 
@@ -208,25 +219,25 @@ struct Project
     Dictionary<String, Target> targets
     {
         { "Debug", {
-            .name = "Debug",
+            .name               = "Debug",
             .optimization_level = 0,
-            .defines = { "DEBUG", "NDEBUG" },
-            .compiler_args = {
+            .sanitizers         = ASan | UBSan,
+            .defines            = { "DEBUG", "NDEBUG" },
+            .compiler_args      = {
                 "g",
                 "Wall",
                 "Werror",
-                "pedantic",
-                "fsanitize=undefined,address" }}},
+                "pedantic" }}},
 
         { "Release", {
-            .name = "Release",
+            .name               = "Release",
             .optimization_level = 3,
-            .defines = { "RELEASE" },
-            .compiler_args = {
+            .sanitizers         = UBSan,
+            .defines            = { "RELEASE" },
+            .compiler_args      = {
                 "Wall",
                 "Werror",
-                "pedantic",
-                "fsanitize=undefined" }}}
+                "pedantic" }}}
     };
 
     Dictionary<String, Dependency> dependencies{};
@@ -356,14 +367,31 @@ static constexpr fun get_compiler_name( const Compiler compiler ) -> String
 }
 
 
+static constexpr fun get_sanitizer_flags( const Target& target ) -> String
+{
+    var flags = String();
+
+    if( target.sanitizers & ASan )
+        flags += " -fsanitize=address";
+
+    if( target.sanitizers & UBSan )
+        flags += " -fsanitize=undefined";
+
+    if( target.sanitizers & TSan )
+        flags += " -fsanitize=thread";
+
+    return flags;
+}
+
+
 static constexpr fun get_flags_from( const Target& target ) -> String
 {
-    var result = String();
+    var flags = String();
     for( u32 i = 0; i < target.compiler_args.size(); ++i )
     {
-        result += " -" + target.compiler_args[i];
+        flags += " -" + target.compiler_args[i];
     }
-    return result;
+    return flags + get_sanitizer_flags( target );
 }
 
 
@@ -390,6 +418,7 @@ static fun compile(
     let compiler_flags = get_flags_from( target );
     let defines        = get_defines_from( target );
 
+
     for( let& source_file: cpp_paths )
     {
         let command = fmt(
@@ -403,6 +432,8 @@ static fun compile(
             source_file.string(),
             obj_output_dir,
             source_file.stem().string() );
+
+        LOG( "{}", command );
 
         // TODO: Accumulate the errors and continue compiling?
         if( let error = system( command.c_str() ) )
@@ -419,13 +450,14 @@ static fun compile(
 }
 
 
-static fun link( const Project& project ) -> ResultCode
+static fun link( const Project& project, const Target& target ) -> ResultCode
 {
     LOG("Linking...");
     var command = get_compiler_name( project.compiler );
 
+    command += get_sanitizer_flags( target );
+
     // TODO: Link libraries
-    command += " -fsanitize=address"; // FIXME: This should be done automatically
 
     var any_obj_files_found = false;
     for( let& entry: fs::directory_iterator( obj_output_dir ) )
@@ -439,6 +471,8 @@ static fun link( const Project& project ) -> ResultCode
     }
     assert( any_obj_files_found );
     command += fmt( " -o {}/{}", bin_output_dir, project.name );
+
+    LOG( "{}", command );
 
     if( system( command.c_str() ) != OK )
     {
@@ -523,7 +557,7 @@ static fun build( const bool run_after_build ) -> ResultCode
         {
             return error;
         }
-        if( let error = link( project ) )
+        if( let error = link( project, *target ) )
         {
             return error;
         }
