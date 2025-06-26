@@ -50,7 +50,6 @@ using List = std::vector<T>;
 template<typename K, typename V>
 using Dictionary = std::unordered_map<K, V>;
 
-// TODO: Do something more sophisticated
 using Path = fs::path;
 
 // defer //////////////////////////////////////////////////////////////////////
@@ -296,6 +295,13 @@ using BuildCfgFunPtr = void(*)(Project*);
 BuildCfgFunPtr build_cfg = nullptr;
 
 
+template<typename Container, typename T>
+constexpr fun contains( const Container& haystack, const T& needle ) -> bool
+{
+    return std::find( haystack.begin(), haystack.end(), needle ) != haystack.end();
+}
+
+
 fun init() -> ResultCode
 {
     if( fs::is_regular_file( "build.cpp" ) )
@@ -343,9 +349,13 @@ fun init() -> ResultCode
 static fun gather_files(
     const Path&       in_path,
     const String&     extension, // TODO: Support multiple extensions
-          List<Path>* paths )
+    const List<Path>& excluded_paths,
+          List<Path>* gathered_paths )
 {
-    assert( paths );
+    assert( gathered_paths );
+
+    if( contains( excluded_paths, in_path ) )
+        return;
 
     if( !fs::is_directory( in_path ) )
     {
@@ -356,12 +366,14 @@ static fun gather_files(
     for( let &entry: fs::directory_iterator( in_path ) )
     {
         if( fs::is_directory( entry ) )
-            gather_files( entry.path(), extension, paths ); // Recursion, yay!
+            gather_files( entry.path(), extension, excluded_paths, gathered_paths ); // Recursion, yay!
 
-        if( fs::is_regular_file( entry ) and entry.path().extension() == extension )
+        if( fs::is_regular_file( entry )
+            and entry.path().extension() == extension
+            and !contains( excluded_paths, entry.path() ) )
         {
             // LOG( "File found: {}", entry.path().string() );
-            paths->push_back( entry.path() );
+            gathered_paths->push_back( entry.path() );
         }
     }
 }
@@ -477,7 +489,7 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
     // Add the compiled .o files
     {
         var obj_paths = List<Path>();
-        gather_files( obj_output_dir, ".o", &obj_paths );
+        gather_files( obj_output_dir, ".o", {}, &obj_paths );
 
         assert( !obj_paths.empty() && "No compiled binaries to link?" );
 
@@ -567,7 +579,7 @@ static fun build( const bool run_after_build ) -> ResultCode
 
         // Find all the source files
         var cpp_paths = List<Path>{};
-        gather_files( "src", ".cpp", &cpp_paths ); // TODO: Add support for source files with different extensions
+        gather_files( "src", ".cpp", target->ignored_paths, &cpp_paths ); // TODO: Add support for source files with different extensions
 
         // TODO: Fetch any remote dependencies and place them in libs/
         // TODO: Link any dynamic libraries into their corresponding .so in build/bin/
