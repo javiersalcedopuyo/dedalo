@@ -3,6 +3,7 @@ compile_commands.json
 build.cpp
 build/
 src/
+lib/
 tests/
 vendor/
 ddl.dSYM/

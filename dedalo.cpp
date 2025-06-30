@@ -77,10 +77,11 @@ private:
 
  // TODO: Support MSVC macros
 #if ENABLE_LOGS()
-    #define LOG(...)        println( "💬 INFO [{} @ {} ln{}]: {}",    __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
-    #define WARNING(...)    println( "⚠️ WARNING [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
-    #define ERROR(...)      println( "⛔️ ERROR [{} @ {} ln{}]: {}",   __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
-    #define UNIMPLEMENTED() println( "🚧 UNIMPLEMENTED [{} @ {} ln{}]", __func__, __FILE__, __LINE__ )
+    #define LOG(...)                 println( "💬 INFO [{} @ {} ln{}]: {}",    __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+    #define WARNING(...)             println( "⚠️ WARNING [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+    #define ERROR(...)               println( "⛔️ ERROR [{} @ {} ln{}]: {}",   __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+    #define UNIMPLEMENTED_MSG( ... ) println( "🚧 UNIMPLEMENTED [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+    #define UNIMPLEMENTED()          UNIMPLEMENTED_MSG( "" )
 #else // ENABLE_LOGS
     #define INFO( msg... )
     #define WARNING( msg... )
@@ -142,18 +143,17 @@ struct Target
 
 struct Dependency
 {
-    enum Linkage: u8 { Static, Dynamic };
     struct Location
     {
         enum Type: u8 { Local, Remote } type;
         Path path;
     };
 
-    String       name     = "UNNAMED";
-    Linkage      linkage  = Static;
-    Location     location = { .type = Location::Local, .path = "" };
-    Version      version  = {0,0,1};
-    List<String> targets  = { "All" };
+    String       name         = "UNNAMED";
+    Location     location     = { .type = Location::Local, .path = "" };
+    String       linker_flags = "";
+    Version      version      = { 0,0,1 };
+    List<String> targets      = { "All" };
 };
 
 
@@ -191,14 +191,14 @@ struct Project
     {}
 
     // TODO: Add more validation
-    constexpr fun AddDependency( const Dependency&& dependency )
+    constexpr fun add_dependency( const Dependency&& dependency )
     {
         assert( dependency.name != "UNNAMED" );
         dependencies[ dependency.name ] = dependency;
     }
 
     // TODO: Add more validation
-    constexpr fun AddTarget( const Target&& target )
+    constexpr fun add_target( const Target&& target )
     {
         assert( target.name != "UNNAMED" );
         assert( target.name != "All" && "`All` is a reserved target name" );
@@ -250,7 +250,7 @@ struct Project
                 "pedantic" }}}
     };
 
-    Dictionary<String, Dependency> dependencies{};
+    Dictionary<String, Dependency> dependencies{}; // TODO: Does this really need to be a Dictionary?
 };
 
 
@@ -271,6 +271,9 @@ void build( Project* project )
 {
     assert( project );
 
+    // "Debug" and "Release" targets are provided by default.
+    // You can override them by creating a new target with the same name.
+    // "Debug" is the default target when none is provided to the `run` command.
     *project = Project({ .name = "##NAME##" });
 }
 )");
@@ -285,7 +288,7 @@ int main( int argc, char* argv[] )
 )");
 
 
-static let include_paths  = String(" -Isrc -Ilibs"); // TODO: Make this an array of paths?
+static let include_paths  = String(" -Isrc -Ilib"); // TODO: Make this an array of paths?
 static let dep_output_dir = String( "./build/dep" );
 static let bin_output_dir = String( "./build/bin" );
 static let obj_output_dir = bin_output_dir + "/obj";
@@ -312,7 +315,7 @@ fun init() -> ResultCode
 
     // Create the directory structure
     {
-        fs::create_directory( "libs" );
+        fs::create_directory( "lib" );
         // TODO: fs::create_directory( "tests"  );
         fs::create_directories( obj_output_dir );
         // TODO: Create a cache and/or other build system files (ninja, make, CMake...)
@@ -476,15 +479,13 @@ static fun compile(
     return OK;
 }
 
-
+// FIXME: This is probably doing too many allocations by concatenating strings
 static fun link( const Project& project, const Target& target ) -> ResultCode
 {
     LOG("Linking...");
     var command = get_compiler_name( project.compiler );
 
     command += get_sanitizer_flags( target );
-
-    // TODO: Link libraries
 
     // Add the compiled .o files
     {
@@ -495,8 +496,61 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
 
         for( let& path: obj_paths )
         {
-            command += " " + path.string(); // FIXME: This is probably doing too many allocations
+            command += " " + path.string();
         }
+    }
+
+    for( let& name_dep_pair: project.dependencies )
+    {
+        let& name = name_dep_pair.first;
+        let& dependency = name_dep_pair.second;
+
+        if( dependency.location.type == Dependency::Location::Remote )
+        {
+            UNIMPLEMENTED_MSG( "No support for remote dependencies yet. Skipping {}.", name );
+            continue;
+        }
+
+        // FIXME: Improve this lookup
+        if( !contains(dependency.targets, "All" ) and !contains( dependency.targets, target.name ) )
+            continue;
+
+        // TODO: Include the version somehow
+        if( dependency.location.path.empty() )
+        {
+            // system library
+            command += fmt( " -l{}", name );
+        }
+        else
+        {
+            let& path = dependency.location.path; // TODO: Verify the path is in the correct subdir
+            if( path.has_extension() )
+            {
+                if( path.extension() == ".dylib" or path.extension() == ".so" )
+                {
+                    // FIXME: This doesn't feel right
+                    // TODO: verify the correct name with `otool`
+                    fs::copy_file( path, bin_output_dir + "/" + path.filename().string() ); // So it can be loaded correctly at runtime
+                } 
+                command += fmt( " {}", path.string() );
+            }
+            else if( fs::is_directory( path ) )
+            {
+                command += fmt( " -L{} -l{}", path.string(), name );
+            }
+            else
+            {
+                ERROR(
+                    "Dependency `{}` is not a system library or doesn't have an entry in the libraries directory.\n"
+                    "Linking and/or compilation might fail.\n"
+                    "Either install it, or manually create the directory `lib/{}` and place there"
+                    "the binary and/or header files.",
+                    name,
+                    name );
+                continue;
+            }
+        }
+        command += " " + dependency.linker_flags;
     }
 
     command += fmt( " -o {}/{}", bin_output_dir, project.name );
@@ -581,7 +635,7 @@ static fun build( const bool run_after_build ) -> ResultCode
         var cpp_paths = List<Path>{};
         gather_files( "src", {".cpp", ".cc", ".cxx"}, target->ignored_paths, &cpp_paths );
 
-        // TODO: Fetch any remote dependencies and place them in libs/
+        // TODO: Fetch any remote dependencies and place them in lib/
         // TODO: Link any dynamic libraries into their corresponding .so in build/bin/
 
         if( let error = compile( project, *target, cpp_paths ) )
