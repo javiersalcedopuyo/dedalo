@@ -6,7 +6,6 @@
 #include <format>
 #include <iostream>
 #include <vector>
-#include <unordered_map>
 #include <filesystem>
 #include <optional>
 
@@ -44,9 +43,6 @@ using Opt = std::optional<T>;
 
 template<typename T>
 using List = std::vector<T>;
-
-template<typename K, typename V>
-using Dictionary = std::unordered_map<K, V>;
 
 using Path = fs::path;
 
@@ -170,27 +166,51 @@ struct Project
     {}
 
     // TODO: Add more validation
-    constexpr fun add_dependency( const Dependency&& dependency )
+    constexpr fun add_dependency( const Dependency& dependency )
     {
         assert( dependency.name != "UNNAMED" );
-        dependencies[ dependency.name ] = dependency;
+        assert( !dependency.name.empty() );
+
+        let iter = std::find_if(
+            dependencies.begin(),
+            dependencies.end(),
+            [ new_name = dependency.name ]( const Dependency& dep )
+            {
+                return dep.name == new_name;
+            });
+
+        if( iter != dependencies.end() )
+        {
+            WARNING( "Dependency '{}' already exists. Skipping.", dependency.name );
+            return;
+        }
+        dependencies.push_back( dependency );
+    }
+
+    constexpr fun find_target( const String& name ) -> Target*
+    {
+        let iter = std::find_if( targets.begin(), targets.end(), [ name ]( const Target& target )
+        {
+            return target.name == name;
+        });
+
+        return iter == targets.end()
+            ? nullptr
+            : &(*iter);
     }
 
     // TODO: Add more validation
-    constexpr fun add_target( const Target&& target )
+    constexpr fun add_target( const Target& target )
     {
         assert( target.name != "UNNAMED" );
         assert( target.name != "All" && "`All` is a reserved target name" );
-        targets[ target.name ] = target;
-    }
+        assert( !target.name.empty() );
 
-    fun find_target( const String& name ) -> Target*
-    {
-        let iter = targets.find( name );
-        if( iter == targets.end() )
-            return nullptr;
-
-        return &(iter->second);
+        // We allow overwriting targets so people can add their own "Debug" and "Release"
+        if( var* old_target = find_target( target.name ) )
+        {
+            *old_target = target;
+        }
     }
 
     String       name = "UNNAMED";
@@ -205,9 +225,9 @@ struct Project
     List<String> command_line_arguments;
     String       default_target; // `build` and `run` will use this target if none is provided
 
-    Dictionary<String, Target> targets
+    List<Target> targets
     {
-        { "Debug", {
+        {
             .name               = "Debug",
             .optimization_level = 0,
             .sanitizers         = ASan | UBSan,
@@ -216,9 +236,9 @@ struct Project
                 "g",
                 "Wall",
                 "Werror",
-                "pedantic" }}},
-
-        { "Release", {
+                "pedantic" }
+        },
+        {
             .name               = "Release",
             .optimization_level = 3,
             .sanitizers         = UBSan,
@@ -226,10 +246,11 @@ struct Project
             .compiler_args      = {
                 "Wall",
                 "Werror",
-                "pedantic" }}}
+                "pedantic" }
+        }
     };
 
-    Dictionary<String, Dependency> dependencies{}; // TODO: Does this really need to be a Dictionary?
+    List<Dependency> dependencies{};
 };
 
 
@@ -479,14 +500,11 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
         }
     }
 
-    for( let& name_dep_pair: project.dependencies )
+    for( let& dependency: project.dependencies )
     {
-        let& name = name_dep_pair.first;
-        let& dependency = name_dep_pair.second;
-
         if( dependency.location.type == Dependency::Location::Remote )
         {
-            UNIMPLEMENTED_MSG( "No support for remote dependencies yet. Skipping {}.", name );
+            UNIMPLEMENTED_MSG( "No support for remote dependencies yet. Skipping {}.", dependency.name );
             continue;
         }
 
@@ -498,7 +516,7 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
         if( dependency.location.path.empty() )
         {
             // system library
-            command += fmt( " -l{}", name );
+            command += fmt( " -l{}", dependency.name );
         }
         else
         {
@@ -515,7 +533,7 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
             }
             else if( fs::is_directory( path ) )
             {
-                command += fmt( " -L{} -l{}", path.string(), name );
+                command += fmt( " -L{} -l{}", path.string(), dependency.name );
             }
             else
             {
@@ -524,8 +542,8 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
                     "Linking and/or compilation might fail.\n"
                     "Either install it, or manually create the directory `lib/{}` and place there"
                     "the binary and/or header files.",
-                    name,
-                    name );
+                    dependency.name,
+                    dependency.name );
                 continue;
             }
         }
