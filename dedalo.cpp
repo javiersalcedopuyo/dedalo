@@ -20,8 +20,6 @@
 #define let auto const
 #define constant static constexpr auto
 
-#define as static_cast
-
 namespace fs = std::filesystem;
 
 using u8  = uint8_t;
@@ -51,25 +49,6 @@ template<typename K, typename V>
 using Dictionary = std::unordered_map<K, V>;
 
 using Path = fs::path;
-
-// defer //////////////////////////////////////////////////////////////////////
-template<typename Lambda>
-class Deferrable
-{
-public:
-    Deferrable() = delete;
-    Deferrable( Lambda  f ): action( f ) {}
-    ~Deferrable() { action(); }
-private:
-    const Lambda action;
-};
-
-// Preprocessor magic so __COUNTER__ can be expanded correctly
-#define CONCATENATE( l, r )         DO_CONCATENATE( l, r )
-#define DO_CONCATENATE( l, r )      DO_CONCATENATE_2( l, r )
-#define DO_CONCATENATE_2( l, r )    l##r
-
-#define defer( f ) const auto CONCATENATE( _deferred, __COUNTER__ ) = Deferrable( [&](){ f; } );
 
 
 #define println(...) std::cout << fmt(__VA_ARGS__) << std::endl;
@@ -387,8 +366,8 @@ static constexpr fun get_compiler_name( const Compiler compiler ) -> String
     switch (compiler)
     {
         case Compiler::Clang: return "clang++";
-        case Compiler::GCC:   return "gcc";
-        case Compiler::MSVC:  return "CL";
+        case Compiler::GCC:   WARNING( "GCC is untested at the moment." ); return "gcc";
+        case Compiler::MSVC:  UNIMPLEMENTED_MSG( "No support for MSVC yet" ); return "CL";
         default: unreachable();
     }
 }
