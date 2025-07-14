@@ -47,6 +47,26 @@ using List = std::vector<T>;
 using Path = fs::path;
 
 
+// defer //////////////////////////////////////////////////////////////////////
+template<typename Lambda>
+class Deferrable
+{
+public:
+    Deferrable() = delete;
+    Deferrable( Lambda  f ): action( f ) {}
+    ~Deferrable() { action(); }
+private:
+    const Lambda action;
+};
+
+// Preprocessor magic so __COUNTER__ can be expanded correctly
+#define CONCATENATE( l, r )         DO_CONCATENATE( l, r )
+#define DO_CONCATENATE( l, r )      DO_CONCATENATE_2( l, r )
+#define DO_CONCATENATE_2( l, r )    l##r
+
+#define defer( f ) const auto CONCATENATE( _deferred, __COUNTER__ ) = Deferrable( [&](){ f; } );
+
+
 #define println(...) std::cout << fmt(__VA_ARGS__) << std::endl;
 
 
@@ -288,9 +308,10 @@ int main( int argc, char* argv[] )
 )");
 
 
-static let include_paths  = String(" -Isrc -Ilib"); // TODO: Make this an array of paths?
-static let dep_output_dir = String( "./build/dep" );
-static let bin_output_dir = String( "./build/bin" );
+static let include_paths  = String( " -Isrc -Ilib" ); // TODO: Make this an array of paths?
+static let dep_output_dir = String( "./build/dep"  );
+static let bin_output_dir = String( "./build/bin"  );
+static let json_temp_dir  = Path(   "./build/json" );
 static let obj_output_dir = bin_output_dir + "/obj";
 
 
@@ -449,7 +470,11 @@ static fun compile(
 
     for( let& source_file: cpp_paths )
     {
-        let command = fmt(
+        let& file_name = source_file.stem().string();
+        // TODO:
+        //  Replicate the src tree in build/bin/obj to avoid clashes with files
+        //  with the same name in different directories
+        var command = fmt(
             "{} -std=c++{} {} {} -O{} {} -c {} -o {}/{}.o -MMD -MF {}/{}.o.d",
             compiler_name,
             project.cpp_version,
@@ -459,9 +484,14 @@ static fun compile(
             include_paths,
             source_file.string(),
             obj_output_dir,
-            source_file.stem().string(),
+            file_name,
             dep_output_dir,
-            source_file.stem().string() );
+            file_name );
+
+        if( project.generate_compile_commands )
+        {
+            command += fmt( " -MJ {}/{}.json", json_temp_dir.string(), file_name );
+        }
 
         LOG( "{}", command );
 
@@ -592,11 +622,50 @@ static fun compile_config() -> ResultCode
 }
 
 
+static fun build_compile_commands_json()
+{
+    if( !fs::is_directory( json_temp_dir ) )
+    {
+        ERROR( "`build/json` directory doesn't exist." );
+        return;
+    }
+
+    var* cmp_cmd_json = fopen( "compile_commands.json", "w" );
+    assert( cmp_cmd_json );
+    defer( fclose( cmp_cmd_json ) );
+
+    fputs( "[\n", cmp_cmd_json );
+    defer( fputs( "]", cmp_cmd_json ) );
+
+
+    for( let& entry: fs::directory_iterator( json_temp_dir ) )
+    {
+        if( !entry.is_regular_file() or entry.path().extension() != ".json" )
+            continue;
+
+        var* part = fopen( entry.path().c_str(), "r" );
+        defer( fclose( part ) );
+
+        // The output of -MJ for a single source file should be a single line json file
+        var line_len = usize( 0 );
+        char* line = nullptr;
+        defer( free( line ) );
+
+        getline( &line, &line_len, part );
+        assert( line );
+        assert( line_len > 0 );
+
+        fputs( line, cmp_cmd_json );
+    }
+}
+
+
 static fun build( const bool run_after_build ) -> ResultCode
 {
     // Make sure the build directories exist
     fs::create_directories( obj_output_dir );
     fs::create_directories( dep_output_dir );
+    fs::create_directories( json_temp_dir );
 
     if( let error = compile_config() )
     {
@@ -638,6 +707,10 @@ static fun build( const bool run_after_build ) -> ResultCode
         if( let error = compile( project, *target, cpp_paths ) )
         {
             return error;
+        }
+        if( project.generate_compile_commands )
+        {
+            build_compile_commands_json();
         }
         if( let error = link( project, *target ) )
         {
