@@ -345,7 +345,7 @@ fun init() -> ResultCode
         {
             var* main_file = fopen( "src/main.cpp", "w" );
             assert( main_file );
-            fwrite( new_main_file_template.c_str(), sizeof(char), new_main_file_template.length(), main_file );
+            fputs( new_main_file_template.c_str(), main_file );
             fclose( main_file );
         }
     }
@@ -363,7 +363,7 @@ fun init() -> ResultCode
             name_tag.length(),
             current_folder_name );
 
-        fwrite( filled_template.c_str(), sizeof(char), filled_template.length(), build_file );
+        fputs( filled_template.c_str(), build_file );
         fclose( build_file );
     }
     return OK;
