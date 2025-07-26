@@ -470,12 +470,27 @@ static fun compile(
 
     for( let& source_file: cpp_paths )
     {
-        let& file_name = source_file.stem().string();
-        // TODO:
-        //  Replicate the src tree in build/bin/obj to avoid clashes with files
-        //  with the same name in different directories
+        assert( source_file.is_relative() );
+
+        // FIXME: There must be a better way to do this. Perhaps with string views?
+        var src_relative_cpp_path = String();
+        for( let& dir: source_file )
+        {
+            if( dir != Path( "src" ) )
+            {
+                src_relative_cpp_path += "/" + dir.string();
+            }
+        }
+
+        let out_obj_path = Path( obj_output_dir + src_relative_cpp_path + ".o" );
+        let out_dep_path = Path( dep_output_dir + src_relative_cpp_path + ".d" );
+
+        // Make sure we're replicating the ./src tree in the obj and deps directories
+        fs::create_directories( out_obj_path.parent_path() );
+        fs::create_directories( out_dep_path.parent_path() );
+
         var command = fmt(
-            "{} -std=c++{} {} {} -O{} {} -c {} -o {}/{}.o -MMD -MF {}/{}.o.d",
+            "{} -std=c++{} {} {} -O{} {} -c {} -o {} -MMD -MF {}",
             compiler_name,
             project.cpp_version,
             compiler_flags,
@@ -483,14 +498,15 @@ static fun compile(
             target.optimization_level,
             include_paths,
             source_file.string(),
-            obj_output_dir,
-            file_name,
-            dep_output_dir,
-            file_name );
+            out_obj_path.string(),
+            out_dep_path.string() );
 
         if( project.generate_compile_commands )
         {
-            command += fmt( " -MJ {}/{}.json", json_temp_dir.string(), file_name );
+            // Make sure we're replicating the ./src tree in the compile_commands.json temp directory
+            let out_json_path = Path( json_temp_dir.string() + src_relative_cpp_path + ".json" );
+            fs::create_directories( out_json_path.parent_path() );
+            command += fmt( " -MJ {} ", out_json_path.string() );
         }
 
         LOG( "{}", command );
@@ -630,6 +646,9 @@ static fun build_compile_commands_json()
         return;
     }
 
+    var json_paths = List<Path>{};
+    gather_files( json_temp_dir, {".json"}, {}, &json_paths );
+
     var* cmp_cmd_json = fopen( "compile_commands.json", "w" );
     assert( cmp_cmd_json );
     defer( fclose( cmp_cmd_json ) );
@@ -637,13 +656,9 @@ static fun build_compile_commands_json()
     fputs( "[\n", cmp_cmd_json );
     defer( fputs( "]", cmp_cmd_json ) );
 
-
-    for( let& entry: fs::directory_iterator( json_temp_dir ) )
+    for( let& entry: json_paths )
     {
-        if( !entry.is_regular_file() or entry.path().extension() != ".json" )
-            continue;
-
-        var* part = fopen( entry.path().c_str(), "r" );
+        var* part = fopen( entry.c_str(), "r" );
         defer( fclose( part ) );
 
         // The output of -MJ for a single source file should be a single line json file
