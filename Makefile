@@ -14,7 +14,11 @@ ddl: dedalo.cpp
 	@rm tmp.json
 
 run: dedalo
-	./dedalo
+	./ddl run
+
+rebuild:
+	$(MAKE) clean
+	$(MAKE) ddl
 
 clean:
 	rm -rf ddl compile_commands.json *.dSYM
