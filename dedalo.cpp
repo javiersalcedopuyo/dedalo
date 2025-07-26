@@ -675,7 +675,7 @@ static fun build_compile_commands_json()
 }
 
 
-static fun build( const bool run_after_build ) -> ResultCode
+static fun build( String target_name, const bool run_after_build ) -> ResultCode
 {
     // Make sure the build directories exist
     fs::create_directories( obj_output_dir );
@@ -708,7 +708,10 @@ static fun build( const bool run_after_build ) -> ResultCode
     build_cfg( &project );
     assert( project.name != "UNNAMED" );
 
-    if( let* target = project.find_target( project.default_target ) )
+    if( target_name.empty() )
+        target_name = project.default_target;
+
+    if( let* target = project.find_target( target_name ) )
     {
         LOG( "Starting build of project \"{}\" for target \"{}\"...", project.name, target->name );
 
@@ -790,12 +793,13 @@ fun main( i32 argc, char* argv[] ) -> i32
     }
     else if( cmd == "build" )
     {
-        // TODO: Provide a specific target
-        return build( /*run_after_build*/ false );
+        let target = argc > 2 ? argv[2] : "";
+        return build( target, /*run_after_build*/ false );
     }
     else if( cmd == "run" )
     {
-        return build( /*run_after_build*/ true );
+        let target = argc > 2 ? argv[2] : "";
+        return build( target, /*run_after_build*/ true );
     }
     else if( cmd == "clean" )
     {
