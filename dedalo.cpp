@@ -283,7 +283,7 @@ static let name_tag = String( "##NAME##" );
 
 static let new_project_template = String(R"(
 #define INCLUDE_AS_HEADER
-#include "dedalo.cpp"
+#include <dedalo.cpp>
 #undef INCLUDE_AS_HEADER
 
 extern "C"
