@@ -127,12 +127,17 @@ struct Version
 
 struct Target
 {
+    using ScriptPtr = bool(*)();
+
     String       name               = "UNNAMED"; // Redundant but convenient
     u8           optimization_level = 0;
     u8           sanitizers         = No_Sanitizers;
     List<String> defines            = {};
     List<String> compiler_args      = {};
     List<Path>   ignored_paths      = {};
+
+    ScriptPtr    pre_build_script   = nullptr;
+    ScriptPtr    post_build_script  = nullptr;
 };
 
 
@@ -261,7 +266,7 @@ struct Project
         {
             .name               = "Release",
             .optimization_level = 3,
-            .sanitizers         = UBSan,
+            .sanitizers         = No_Sanitizers,
             .defines            = { "RELEASE" },
             .compiler_args      = {
                 "Wall",
@@ -715,6 +720,11 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
     {
         LOG( "Starting build of project \"{}\" for target \"{}\"...", project.name, target->name );
 
+        if( target->pre_build_script and target->pre_build_script() == false )
+        {
+            ERROR( "Pre-build script failed!" );
+        }
+
         // Find all the source files
         var cpp_paths = List<Path>{};
         gather_files( "src", {".cpp", ".cc", ".cxx"}, target->ignored_paths, &cpp_paths );
@@ -742,6 +752,12 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
                 return RUN_COMMAND_FAILED;
             }
         }
+
+        if( target->post_build_script and target->post_build_script() == false )
+        {
+            ERROR( "Post-build script failed!" );
+        }
+
         return OK;
     }
     else
