@@ -196,14 +196,24 @@ struct Target
 
 struct Dependency
 {
-    struct Location
+    enum Location: u8
     {
-        enum Type: u8 { Local, Remote } type;
-        Path path;
+        System,
+        Local,
+        Remote,
     };
 
+    enum Linking: u8
+    {
+        Static,
+        Dynamic,
+        SingleHeader
+    };
+
+
     String       name         = "UNNAMED";
-    Location     location     = { .type = Location::Local, .path = "" };
+    Linking      linking      = Dynamic;
+    Location     location     = System;
     String       linker_flags = "";
     Version      version      = { 0,0,1 };
     List<String> targets      = { "All" };
@@ -369,7 +379,8 @@ int main( int argc, char* argv[] )
 static let include_paths  = String( " -Isrc -Ilib" ); // TODO: Make this an array of paths?
 static let dep_output_dir = String( "./build/dep"  );
 static let bin_output_dir = String( "./build/bin"  );
-static let json_temp_dir  = Path(   "./build/json" );
+static let libraries_dir  = String( "./lib"        );
+static let json_temp_dir  = Path  ( "./build/json" );
 static let obj_output_dir = bin_output_dir + "/obj";
 
 
@@ -662,7 +673,7 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
 
     for( let& dependency: project.dependencies )
     {
-        if( dependency.location.type == Dependency::Location::Remote )
+        if( dependency.location == Dependency::Remote )
         {
             UNIMPLEMENTED_MSG( "No support for remote dependencies yet. Skipping {}.", dependency.name );
             continue;
@@ -672,38 +683,64 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
         if( !contains(dependency.targets, "All" ) and !contains( dependency.targets, target.name ) )
             continue;
 
+        let lib_dir = libraries_dir + "/" + dependency.name;
+        var lib_path = lib_dir + "/lib" + dependency.name;
+
         // TODO: Include the version somehow
-        if( dependency.location.path.empty() )
+        switch( dependency.linking )
         {
-            // system library
-            command += fmt( " -l{}", dependency.name );
-        }
-        else
-        {
-            let& path = dependency.location.path; // TODO: Verify the path is in the correct subdir
-            if( path.has_extension() )
+            case Dependency::Linking::Static:
             {
-                if( path.extension() == ".dylib" or path.extension() == ".so" )
+                assert( fs::is_directory( lib_dir ) );
+
+                lib_path += ".a";
+                assert( fs::is_regular_file( lib_path ) );
+
+                command += fmt( " {}", lib_path );
+                break;
+            }
+            case Dependency::Linking::Dynamic:
+            {
+                if( dependency.location == Dependency::System )
                 {
-                    // FIXME: This doesn't feel right
-                    // TODO: verify the correct name with `otool`
-                    fs::copy_file( path, bin_output_dir + "/" + path.filename().string() ); // So it can be loaded correctly at runtime
-                } 
-                command += fmt( " {}", path.string() );
+                    command += fmt( " -l{}", dependency.name ); // system library
+                }
+                else if( dependency.location == Dependency::Local )
+                {
+                    if( fs::is_regular_file( lib_path + ".so" ) )
+                    {
+                        lib_path += ".so";
+                    }
+                    else if( fs::is_regular_file( lib_path + ".dylib" ) )
+                    {
+                        lib_path += ".dylib";
+                    }
+                    else
+                    {
+                        ERROR( "Dependency {} has the wrong type for a dynamic library.", dependency.name );
+                        continue;
+                    }
+
+                    // So it can be loaded correctly at runtime
+                    // FIXME: This relies on the install name matching the file name.
+                    fs::copy_file(
+                        lib_path,
+                        bin_output_dir + "/" + Path( lib_path ).filename().string(),
+                        fs::copy_options::overwrite_existing );
+
+                    command += fmt( " {}", lib_path );
+                }
+                else
+                {
+                    UNIMPLEMENTED_MSG( "Remote dynamic libraries are not supported." );
+                    continue;
+                }
+                break;
             }
-            else if( fs::is_directory( path ) )
+            case Dependency::Linking::SingleHeader:
             {
-                command += fmt( " -L{} -l{}", path.string(), dependency.name );
-            }
-            else
-            {
-                ERROR(
-                    "Dependency `{}` is not a system library or doesn't have an entry in the libraries directory.\n"
-                    "Linking and/or compilation might fail.\n"
-                    "Either install it, or manually create the directory `lib/{}` and place there"
-                    "the binary and/or header files.",
-                    dependency.name,
-                    dependency.name );
+                // Nothing to link
+                // TODO: If a path is provided, copy it into lib/dep_name
                 continue;
             }
         }
