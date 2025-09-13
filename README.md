@@ -93,7 +93,7 @@ System (aka installed) libraries don't need an directory in `lib`.
 - [x] Single project config file, written in C++.
 - [x] Auto-generated file structure.
 - [x] Generation of `compile_commands.json`
-- [ ] Incremental builds
+- [x] Incremental builds
 - [ ] Multithreaded builds
 - [ ] `test` command
 - [ ] Local dependency management

@@ -2,6 +2,7 @@
 #include <cassert>
 
 // STL bloat
+#include <cstring>
 #include <string>
 #include <format>
 #include <iostream>
@@ -86,6 +87,50 @@ private:
 
 
 #define unreachable() { ERROR("Unreachable point reached!"); abort(); }
+
+
+static fun trim( char* input ) -> char*
+{
+    assert( input );
+
+    // Advance the pointer 'til the next 
+    while( isspace( input[0] ) )
+        ++input;
+
+    if( input[0] == '\0' )
+        return nullptr;
+
+    var* end = input + strlen( input ) - 1;
+
+    while( end > input and isspace( end[0] ) )
+    {
+        end[0] = '\0';
+        --end;
+    }
+
+    return input;
+}
+
+
+static fun split( const char* input, const char delimiter ) -> List< char* >
+{
+    var slices = List< char* >{};
+
+    while( input[0] == delimiter )
+        ++input;
+
+    var* input_dup = strdup( input );
+
+    char* slice;
+    while( ( slice = strsep( &input_dup, &delimiter ) ) != nullptr )
+    {
+        if( slice[0] != '\0' )
+        {
+            slices.emplace_back( slice );
+        }
+    }
+    return slices;
+}
 
 
 enum [[nodiscard]] ResultCode
@@ -459,6 +504,61 @@ static constexpr fun get_defines_from( const Target& target ) -> String
 }
 
 
+// TODO : Deal with this string allocation mess
+static fun needs_recompiling(
+    const Path& obj_path,
+    const Path& dep_path )
+-> bool
+{
+    if( !fs::exists( obj_path ) )
+    {
+        return true;
+    }
+
+    if( var* obj_dep_file = fopen( dep_path.c_str(), "r" ) )
+    {
+        defer( fclose( obj_dep_file ) );
+
+        let obj_timestamp = fs::last_write_time( obj_path );
+
+        char* line = nullptr;
+        size_t dummy = 0;
+
+        var is_first_line = true;
+        while( ( getline( &line, &dummy, obj_dep_file ) ) > 0 )
+        {
+            defer( free( line ); line = nullptr; );
+
+            char* clean_line = trim( line );
+
+            let file_paths = split( clean_line, ' ' );
+            defer( free( file_paths[0] ) );
+
+            for( var i = 0; i < file_paths.size(); ++i )
+            {
+                if( is_first_line and i == 0 )
+                {
+                    assert( file_paths.size() >= 2 );
+                    assert( strcmp( file_paths[0], ( obj_path.string() + ":" ).c_str() ) == 0 );
+                    is_first_line = false;
+                    continue;
+                }
+
+                let* path = file_paths[i];
+
+                if( strcmp( path, "\\" ) == 0 )
+                    break; // EOL
+
+                if( fs::last_write_time( path ) > obj_timestamp )
+                    return true;
+            }
+        }
+        return false;
+    }
+    return true;
+}
+
+
 static fun compile(
     const Project&    project,
     const Target&     target,
@@ -493,6 +593,11 @@ static fun compile(
         // Make sure we're replicating the ./src tree in the obj and deps directories
         fs::create_directories( out_obj_path.parent_path() );
         fs::create_directories( out_dep_path.parent_path() );
+
+        if( !needs_recompiling( out_obj_path, out_dep_path ) )
+        {
+            continue;
+        }
 
         var command = fmt(
             "{} -std=c++{} {} {} -O{} {} -c {} -o {} -MMD -MF {}",
@@ -614,22 +719,14 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
 }
 
 
-static fun needs_recompiling( const Path& source, const Path& binary ) -> bool
-{
-    assert( fs::exists( source ) );
-    return !fs::exists( binary )
-        or fs::last_write_time( source ) > fs::last_write_time( binary );
-}
-
-
 static fun compile_config() -> ResultCode
 {
     constant so_path  = "./build/build_script.so";
     constant cpp_path = "./build.cpp";
 
-    if( !needs_recompiling( cpp_path, so_path ) )
+    if( fs::exists( so_path ) and fs::last_write_time( so_path ) >= fs::last_write_time( cpp_path ) )
     {
-        return OK;
+        return OK; // The binary is up to date, no need to recompile
     }
 
     LOG( "Compiling build config..." );
