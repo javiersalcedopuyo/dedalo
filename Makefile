@@ -2,7 +2,7 @@ CC = clang++
 CFLAGS = -std=c++20\
 		 -Werror -Wall -pedantic
 
-RELEASE_FLAGS = -O3
+RELEASE_FLAGS = -O3 -DNDEBUG
 DEBUG_FLAGS   = -MJ tmp.json\
 				-fsanitize=undefined,address\
 				-O0 -g
