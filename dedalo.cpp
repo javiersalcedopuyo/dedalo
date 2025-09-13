@@ -193,27 +193,27 @@ struct Target
     ScriptPtr    post_build_script  = nullptr;
 };
 
+enum struct Location: u8
+{
+    System,
+    Local,
+    Remote,
+};
+
+enum struct Linking: u8
+{
+    Static,
+    Dynamic,
+    SingleHeader
+};
 
 struct Dependency
 {
-    enum Location: u8
-    {
-        System,
-        Local,
-        Remote,
-    };
-
-    enum Linking: u8
-    {
-        Static,
-        Dynamic,
-        SingleHeader
-    };
 
 
     String       name         = "UNNAMED";
-    Linking      linking      = Dynamic;
-    Location     location     = System;
+    Linking      linking      = Linking::Dynamic;
+    Location     location     = Location::System;
     String       linker_flags = "";
     Version      version      = { 0,0,1 };
     List<String> targets      = { "All" };
@@ -673,7 +673,7 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
 
     for( let& dependency: project.dependencies )
     {
-        if( dependency.location == Dependency::Remote )
+        if( dependency.location == Location::Remote )
         {
             UNIMPLEMENTED_MSG( "No support for remote dependencies yet. Skipping {}.", dependency.name );
             continue;
@@ -689,7 +689,7 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
         // TODO: Include the version somehow
         switch( dependency.linking )
         {
-            case Dependency::Linking::Static:
+            case Linking::Static:
             {
                 assert( fs::is_directory( lib_dir ) );
 
@@ -699,13 +699,13 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
                 command += fmt( " {}", lib_path );
                 break;
             }
-            case Dependency::Linking::Dynamic:
+            case Linking::Dynamic:
             {
-                if( dependency.location == Dependency::System )
+                if( dependency.location == Location::System )
                 {
                     command += fmt( " -l{}", dependency.name ); // system library
                 }
-                else if( dependency.location == Dependency::Local )
+                else if( dependency.location == Location::Local )
                 {
                     if( fs::is_regular_file( lib_path + ".so" ) )
                     {
@@ -737,7 +737,7 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
                 }
                 break;
             }
-            case Dependency::Linking::SingleHeader:
+            case Linking::SingleHeader:
             {
                 // Nothing to link
                 // TODO: If a path is provided, copy it into lib/dep_name
