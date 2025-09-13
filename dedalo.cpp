@@ -47,6 +47,8 @@ using List = std::vector<T>;
 
 using Path = fs::path;
 
+#define as static_cast
+
 
 // defer //////////////////////////////////////////////////////////////////////
 template<typename Lambda>
@@ -89,8 +91,11 @@ private:
 #define unreachable() { ERROR("Unreachable point reached!"); abort(); }
 
 
-static fun trim( char* input ) -> char*
+static fun trim( char** input_ptr ) -> char*
 {
+    assert( input_ptr );
+
+    char* input = *input_ptr;
     assert( input );
 
     // Advance the pointer 'til the next 
@@ -112,17 +117,20 @@ static fun trim( char* input ) -> char*
 }
 
 
-static fun split( const char* input, const char delimiter ) -> List< char* >
+static fun split( char** input_ptr, const char delimiter ) -> List< char* >
 {
+    assert( input_ptr );
+
     var slices = List< char* >{};
+
+    char* input = *input_ptr;
+    assert( input );
 
     while( input[0] == delimiter )
         ++input;
 
-    var* input_dup = strdup( input );
-
     char* slice;
-    while( ( slice = strsep( &input_dup, &delimiter ) ) != nullptr )
+    while( ( slice = strsep( &input, &delimiter ) ) != nullptr )
     {
         if( slice[0] != '\0' )
         {
@@ -504,7 +512,6 @@ static constexpr fun get_defines_from( const Target& target ) -> String
 }
 
 
-// TODO : Deal with this string allocation mess
 static fun needs_recompiling(
     const Path& obj_path,
     const Path& dep_path )
@@ -521,18 +528,15 @@ static fun needs_recompiling(
 
         let obj_timestamp = fs::last_write_time( obj_path );
 
-        char* line = nullptr;
-        size_t dummy = 0;
+        var  dummy         = usize( 0 );
+        var  is_first_line = true;
+        var* line          = as< char* >( malloc( 128 * sizeof( char ) ) );
+        defer( free( line ) );
 
-        var is_first_line = true;
         while( ( getline( &line, &dummy, obj_dep_file ) ) > 0 )
         {
-            defer( free( line ); line = nullptr; );
-
-            char* clean_line = trim( line );
-
-            let file_paths = split( clean_line, ' ' );
-            defer( free( file_paths[0] ) );
+            trim( &line );
+            let file_paths = split( &line, ' ' );
 
             for( var i = 0; i < file_paths.size(); ++i )
             {
