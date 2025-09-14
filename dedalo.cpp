@@ -209,8 +209,6 @@ enum struct Linking: u8
 
 struct Dependency
 {
-
-
     String       name         = "UNNAMED";
     Linking      linking      = Linking::Dynamic;
     Location     location     = Location::System;
@@ -632,6 +630,15 @@ static fun compile(
             let out_json_path = Path( json_temp_dir.string() + src_relative_cpp_path + ".json" );
             fs::create_directories( out_json_path.parent_path() );
             command += fmt( " -MJ {} ", out_json_path.string() );
+
+            // TODO: Is this necessary on Windows too?
+            #if !defined( _WIN32 )
+            {
+                // This is unnecessary for compilation, but clangd (the LSP not the compiler)
+                // doesn't seem to find system headers without it.
+                command += " -I/usr/local/include";
+            }
+            #endif
         }
 
         LOG( "{}", command );
