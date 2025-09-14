@@ -754,6 +754,14 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
         command += " " + dependency.linker_flags;
     }
 
+    #if defined( __APPLE__ )
+    {
+        // The runtime doesn't seem to find system libraries stored in `/usr/local/lib`
+        // (despite them linking fine) because that path is not in the @rpath.
+        command += " -Wl,-rpath,/usr/local/lib";
+    }
+    #endif
+
     command += fmt( " -o {}/{}", bin_output_dir, project.name );
 
     LOG( "{}", command );
