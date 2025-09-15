@@ -297,6 +297,21 @@ struct Project
         }
     }
 
+    // Adds a define common to all targets
+    constexpr fun add_define( const String& def )
+    {
+        for( var& target: targets )
+            target.defines.push_back( def );
+    }
+
+    // Adds a compiler argument common to all targets
+    constexpr fun add_compiler_arg( const String& arg )
+    {
+        for( var& target: targets )
+            target.compiler_args.push_back( arg );
+    }
+
+
     String       name = "UNNAMED";
     String       description;
     Version      version;
@@ -511,9 +526,9 @@ static constexpr fun get_flags_from( const Target& target ) -> String
 static constexpr fun get_defines_from( const Target& target ) -> String
 {
     var result = String();
-    for( u32 i = 0; i < target.defines.size(); ++i )
+    for( let& def: target.defines )
     {
-        result += " -D" + target.defines[i];
+        result += " -D" + def;
     }
     return result;
 }
