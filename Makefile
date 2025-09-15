@@ -1,6 +1,7 @@
 CC = clang++
 CFLAGS = -std=c++20\
-		 -Werror -Wall -pedantic
+		 -Werror -Wall -pedantic\
+		 -DENABLE_LOGS
 
 RELEASE_FLAGS = -O3 -DNDEBUG
 DEBUG_FLAGS   = -MJ tmp.json\

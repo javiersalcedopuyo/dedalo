@@ -11,9 +11,6 @@
 #include <optional>
 
 
-#define ENABLE_LOGS() 1
-
-
 // Rust at home ///////////////////////////////////////////////////////////////
 #define fun auto
 #define var auto
@@ -74,16 +71,17 @@ private:
 
 
  // TODO: Support MSVC macros
-#if ENABLE_LOGS()
-    #define LOG(...)                 println( "💬 INFO [{} @ {} ln{}]: {}",    __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+#if defined( ENABLE_LOGS )
+    #define INFO(...)                 println( "💬 INFO [{} @ {} ln{}]: {}",    __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
     #define WARNING(...)             println( "⚠️ WARNING [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
     #define ERROR(...)               println( "⛔️ ERROR [{} @ {} ln{}]: {}",   __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
     #define UNIMPLEMENTED_MSG( ... ) println( "🚧 UNIMPLEMENTED [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
     #define UNIMPLEMENTED()          UNIMPLEMENTED_MSG( "" )
 #else // ENABLE_LOGS
-    #define INFO( msg... )
-    #define WARNING( msg... )
-    #define ERROR( msg... )
+    #define INFO( ... )
+    #define WARNING( ... )
+    #define ERROR( ... )
+    #define UNIMPLEMENTED_MSG( ... )
     #define UNIMPLEMENTED()
 #endif // ENABLE_LOGS
 
@@ -463,7 +461,7 @@ static fun gather_files(
             and contains( extensions, entry.path().extension() )
             and !contains( excluded_paths, entry.path() ) )
         {
-            // LOG( "File found: {}", entry.path().string() );
+            // INFO( "File found: {}", entry.path().string() );
             gathered_paths->push_back( entry.path() );
         }
     }
@@ -577,7 +575,7 @@ static fun compile(
     const Target&     target,
     const List<Path>& cpp_paths ) -> ResultCode
 {
-    LOG("Compiling...");
+    INFO( "COMPILING..." );
     // TODO: Spread the compilation across multiple threads
 
     let compiler_name  = get_compiler_name( project.compiler );
@@ -641,7 +639,7 @@ static fun compile(
             #endif
         }
 
-        LOG( "{}", command );
+        INFO( "{}", command );
 
         // TODO: Accumulate the errors and continue compiling?
         if( let error = system( command.c_str() ) )
@@ -660,7 +658,7 @@ static fun compile(
 // FIXME: This is probably doing too many allocations by concatenating strings
 static fun link( const Project& project, const Target& target ) -> ResultCode
 {
-    LOG("Linking...");
+    INFO( "LINKING..." );
     var command = get_compiler_name( project.compiler );
 
     command += get_sanitizer_flags( target );
@@ -764,7 +762,7 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
 
     command += fmt( " -o {}/{}", bin_output_dir, project.name );
 
-    LOG( "{}", command );
+    INFO( "{}", command );
 
     if( system( command.c_str() ) != OK )
     {
@@ -785,7 +783,7 @@ static fun compile_config() -> ResultCode
         return OK; // The binary is up to date, no need to recompile
     }
 
-    LOG( "Compiling build config..." );
+    INFO( "Compiling build config..." );
     // TODO: Dynamically choose the compiler
     if( let error = system( "clang++ --std=c++20 -fPIC -shared -o ./build/build_script.so build.cpp" ) )
     {
@@ -845,7 +843,7 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
         return error;
     }
 
-    LOG( "Loading build config..." );
+    INFO( "Loading build config..." );
     {
         var* dll = dlopen( "./build/build_script.so", RTLD_NOW );
         if( !dll )
@@ -871,7 +869,7 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
 
     if( let* target = project.find_target( target_name ) )
     {
-        LOG( "Starting build of project \"{}\" for target \"{}\"...", project.name, target->name );
+        INFO( "Starting build of project \"{}\" for target \"{}\"...", project.name, target->name );
 
         if( target->pre_build_script and target->pre_build_script() == false )
         {
@@ -899,6 +897,7 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
         }
         if( run_after_build )
         {
+            INFO( "RUNNING...\n" );
             let command = "./" + bin_output_dir + "/" + project.name;
             if( system( command.c_str() ) != OK )
             {
