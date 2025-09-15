@@ -602,7 +602,9 @@ static fun needs_recompiling(
 static fun compile(
     const Project&    project,
     const Target&     target,
-    const List<Path>& cpp_paths ) -> ResultCode
+    const List<Path>& cpp_paths,
+    const bool        force_compilation )
+-> ResultCode
 {
     INFO( "COMPILING..." );
     // TODO: Spread the compilation across multiple threads
@@ -634,7 +636,7 @@ static fun compile(
         fs::create_directories( out_obj_path.parent_path() );
         fs::create_directories( out_dep_path.parent_path() );
 
-        if( !needs_recompiling( out_obj_path, out_dep_path ) )
+        if( !force_compilation and !needs_recompiling( out_obj_path, out_dep_path ) )
         {
             continue;
         }
@@ -802,15 +804,19 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
 }
 
 
-static fun compile_config() -> ResultCode
+static fun compile_config( bool* has_changed ) -> ResultCode
 {
+    assert( has_changed );
+
     constant so_path  = "./build/build_script.so";
     constant cpp_path = "./build.cpp";
 
     if( fs::exists( so_path ) and fs::last_write_time( so_path ) >= fs::last_write_time( cpp_path ) )
     {
+        *has_changed = false;
         return OK; // The binary is up to date, no need to recompile
     }
+    *has_changed = true;
 
     INFO( "Compiling build config..." );
     // TODO: Dynamically choose the compiler
@@ -867,7 +873,8 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
     fs::create_directories( dep_output_dir );
     fs::create_directories( json_temp_dir );
 
-    if( let error = compile_config() )
+    bool config_recompiled = false;
+    if( let error = compile_config( &config_recompiled ) )
     {
         return error;
     }
@@ -917,7 +924,7 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
         // TODO: Fetch any remote dependencies and place them in lib/
         // TODO: Link any dynamic libraries into their corresponding .so in build/bin/
 
-        if( let error = compile( project, *target, cpp_paths ) )
+        if( let error = compile( project, *target, cpp_paths, config_recompiled ) )
         {
             return error;
         }
