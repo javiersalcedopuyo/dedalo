@@ -187,8 +187,8 @@ struct Target
     List<String> compiler_args      = {};
     List<Path>   ignored_paths      = {};
 
-    ScriptPtr    pre_build_script   = nullptr;
-    ScriptPtr    post_build_script  = nullptr;
+    List<ScriptPtr> pre_build_scripts  = {};
+    List<ScriptPtr> post_build_scripts = {};
 };
 
 enum struct Location: u8
@@ -309,6 +309,20 @@ struct Project
     {
         for( var& target: targets )
             target.compiler_args.push_back( arg );
+    }
+
+    // Adds a pre-build script common to all targets
+    constexpr fun add_pre_build_script( Target::ScriptPtr script )
+    {
+        for( var& target: targets )
+            target.pre_build_scripts.push_back( script );
+    }
+
+    // Adds a post-build script common to all targets
+    constexpr fun add_post_build_script( Target::ScriptPtr script )
+    {
+        for( var& target: targets )
+            target.post_build_scripts.push_back( script );
     }
 
 
@@ -886,9 +900,14 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
     {
         INFO( "Starting build of project \"{}\" for target \"{}\"...", project.name, target->name );
 
-        if( target->pre_build_script and target->pre_build_script() == false )
+        for( u8 i = 0; i < target->pre_build_scripts.size(); ++i )
         {
-            ERROR( "Pre-build script failed!" );
+            assert( target->pre_build_scripts[i] != nullptr );
+            INFO( "Running pre-build script #{}...", i );
+            if( target->pre_build_scripts[i]() == false )
+            {
+                ERROR( "Pre-build script #{} failed!", i );
+            }
         }
 
         // Find all the source files
@@ -910,6 +929,17 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
         {
             return error;
         }
+
+        for( u8 i = 0; i < target->post_build_scripts.size(); ++i )
+        {
+            assert( target->post_build_scripts[i] != nullptr );
+            INFO( "Running post-build script #{}...", i );
+            if( target->post_build_scripts[i]() == false )
+            {
+                ERROR( "Post-build script #{} failed!", i );
+            }
+        }
+
         if( run_after_build )
         {
             INFO( "RUNNING...\n" );
@@ -919,12 +949,6 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
                 return RUN_COMMAND_FAILED;
             }
         }
-
-        if( target->post_build_script and target->post_build_script() == false )
-        {
-            ERROR( "Post-build script failed!" );
-        }
-
         return OK;
     }
     else
