@@ -72,10 +72,17 @@ private:
 
  // TODO: Support MSVC macros
 #if defined( ENABLE_LOGS )
-    #define INFO(...)                 println( "💬 INFO [{} @ {} ln{}]: {}",    __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
-    #define WARNING(...)             println( "⚠️ WARNING [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
-    #define ERROR(...)               println( "⛔️ ERROR [{} @ {} ln{}]: {}",   __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
-    #define UNIMPLEMENTED_MSG( ... ) println( "🚧 UNIMPLEMENTED [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+    #if defined( NDEBUG )
+        #define INFO(...)                println( "DEDALO: {}",    fmt(__VA_ARGS__) )
+        #define WARNING(...)
+        #define ERROR(...)               println( "⛔️ DEDALO ERROR: {}",   fmt(__VA_ARGS__) )
+        #define UNIMPLEMENTED_MSG( ... )
+    #else // NDEBUG
+        #define INFO(...)                println( "💬 INFO [{} @ {} ln{}]: {}",    __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+        #define WARNING(...)             println( "⚠️ WARNING [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+        #define ERROR(...)               println( "⛔️ ERROR [{} @ {} ln{}]: {}",   __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+        #define UNIMPLEMENTED_MSG( ... ) println( "🚧 UNIMPLEMENTED [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+    #endif // NDEBUG
     #define UNIMPLEMENTED()          UNIMPLEMENTED_MSG( "" )
 #else // ENABLE_LOGS
     #define INFO( ... )
