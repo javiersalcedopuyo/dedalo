@@ -95,52 +95,35 @@ private:
 
 #define unreachable() { ERROR("Unreachable point reached!"); abort(); }
 
-
-static fun trim( char** input_ptr ) -> char*
+static fun trim( String* input )
 {
-    assert( input_ptr );
-
-    char* input = *input_ptr;
     assert( input );
-
-    // Advance the pointer 'til the next 
-    while( isspace( input[0] ) )
-        ++input;
-
-    if( input[0] == '\0' )
-        return nullptr;
-
-    var* end = input + strlen( input ) - 1;
-
-    while( end > input and isspace( end[0] ) )
+    // Left trim
     {
-        end[0] = '\0';
-        --end;
+        var iter = std::find_if_not( input->begin(), input->end(), [](char c){ return isspace(c); } );
+        input->erase( input->begin(), iter );
     }
-
-    return input;
+    // right trim
+    {
+        var iter = std::find_if_not( input->rbegin(), input->rend(), [](char c){ return isspace(c); } );
+        input->erase( iter.base(), input->end() );
+    }
 }
 
 
-static fun split( char** input_ptr, const char delimiter ) -> List< char* >
+static fun split( const String& input, const char delimiter ) -> List<std::string_view>
 {
-    assert( input_ptr );
+    var slices = List<std::string_view>{};
 
-    var slices = List< char* >{};
-
-    char* input = *input_ptr;
-    assert( input );
-
-    while( input[0] == delimiter )
-        ++input;
-
-    char* slice;
-    while( ( slice = strsep( &input, &delimiter ) ) != nullptr )
+    var start = 0u;
+    while( start < input.size() )
     {
-        if( slice[0] != '\0' )
-        {
-            slices.emplace_back( slice );
-        }
+        var pos = input.find( delimiter, start );
+        if( pos == std::string_view::npos )
+            pos = input.size();
+
+        slices.push_back( std::string_view(input).substr( start, pos-start ) );
+        start = pos + 1;
     }
     return slices;
 }
@@ -582,25 +565,26 @@ static fun needs_recompiling(
 
         while( ( getline( &line, &dummy, obj_dep_file ) ) > 0 )
         {
-            trim( &line );
-            let file_paths = split( &line, ' ' );
+            String line_str;
+            line_str.assign( line );
+
+            trim( &line_str );
+            let file_paths = split( line_str, ' ' );
 
             for( var i = 0; i < file_paths.size(); ++i )
             {
                 if( is_first_line and i == 0 )
                 {
                     assert( file_paths.size() >= 2 );
-                    assert( strcmp( file_paths[0], ( obj_path.string() + ":" ).c_str() ) == 0 );
+                    assert( file_paths[0] == obj_path.string() + ":" );
                     is_first_line = false;
                     continue;
                 }
 
-                let* path = file_paths[i];
-
-                if( strcmp( path, "\\" ) == 0 )
+                if( file_paths[i] == "\\" )
                     break; // EOL
 
-                if( fs::last_write_time( path ) > obj_timestamp )
+                if( fs::last_write_time( file_paths[i] ) > obj_timestamp )
                     return true;
             }
         }
