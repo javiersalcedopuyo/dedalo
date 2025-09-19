@@ -36,14 +36,14 @@ This will generate the following tree:
 .
 ├── build
 │   ├── bin
-│   │   ├── my_project
-│   │   └── obj
-│   │       └── main.cpp.o
+│   │   └── my_project
 │   ├── build_script.so
 │   ├── dep
 │   │   └── main.cpp.d
-│   └── json
-│       └── main.cpp.json
+│   ├─── json
+│   │    └── main.cpp.json
+│   └── obj
+│       └── main.cpp.o
 ├── build.cpp
 ├── compile_commands.json
 ├── lib
