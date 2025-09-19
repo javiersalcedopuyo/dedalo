@@ -73,9 +73,9 @@ private:
  // TODO: Support MSVC macros
 #if defined( ENABLE_LOGS )
     #if defined( NDEBUG )
-        #define INFO(...)                println( "DEDALO: {}",    fmt(__VA_ARGS__) )
+        #define INFO(...)                println( "[DEDALO] {}",    fmt(__VA_ARGS__) )
         #define WARNING(...)
-        #define ERROR(...)               println( "⛔️ DEDALO ERROR: {}",   fmt(__VA_ARGS__) )
+        #define ERROR(...)               println( "⛔️ [DEDALO] ERROR: {}",   fmt(__VA_ARGS__) )
         #define UNIMPLEMENTED_MSG( ... )
     #else // NDEBUG
         #define INFO(...)                println( "💬 INFO [{} @ {} ln{}]: {}",    __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
@@ -412,12 +412,12 @@ int main( int argc, char* argv[] )
 )");
 
 
-static let include_paths  = String( " -Isrc -Ilib" ); // TODO: Make this an array of paths?
-static let dep_output_dir = String( "./build/dep"  );
-static let bin_output_dir = String( "./build/bin"  );
-static let libraries_dir  = String( "./lib"        );
-static let json_temp_dir  = Path  ( "./build/json" );
-static let obj_output_dir = bin_output_dir + "/obj";
+static let include_paths  = String( " -Isrc -Ilib"    ); // TODO: Make this an array of paths?
+static let dep_output_dir = String( "./build/dep"     );
+static let bin_output_dir = String( "./build/bin"     );
+static let libraries_dir  = String( "./lib"           );
+static let json_temp_dir  = Path  ( "./build/json"    );
+static let obj_output_dir = String( "./build/obj" );
 
 
 using BuildCfgFunPtr = void(*)(Project*);
@@ -806,6 +806,8 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
 
     INFO( "{}", command );
 
+    fs::create_directories( bin_output_dir );
+
     if( system( command.c_str() ) != OK )
     {
         ERROR( "Failed linking.\nCommand:\n\t{}", command );
@@ -1000,7 +1002,6 @@ fun test() -> ResultCode
 fun clean() -> ResultCode
 {
     fs::remove_all( "./build" );
-    fs::create_directories( obj_output_dir );
     return OK;
 }
 
