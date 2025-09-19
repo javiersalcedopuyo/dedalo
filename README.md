@@ -12,7 +12,8 @@ All you need to get a C++ project up and running is a C++ compiler, no other lan
 ## You're in control
 A Makefile is provided for convenience (ironic, I know), but it's trivial to compile it yourself.
 The whole project is a single cpp file, so it's easy to modify, and distribute it alongside your project's source.
-The "canon" name of the executable is `ddl`, but you can change that too!
+The "canon" name of the executable is `ddl`, but you can change that to whatever you want by changing `EXECUTABLE_NAME` in the Makefile
+That way you could give it a more "official" name like `cpp` so you can do things like `cpp init` or `cpp build`.
 
 
 ## Commands
