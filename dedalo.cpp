@@ -122,7 +122,7 @@ static fun split( const String& input, const char delimiter ) -> List<std::strin
         if( pos == std::string_view::npos )
             pos = input.size();
 
-        slices.push_back( std::string_view(input).substr( start, pos-start ) );
+        slices.emplace_back( std::string_view( input ).substr( start, pos - start ) );
         start = pos + 1;
     }
     return slices;
