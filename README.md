@@ -84,12 +84,39 @@ A `Release` and `Debug` targets are provided by default with the following confi
 All source files added to `src/` will be compiled, but you can exclude paths adding them to the target's `ignored_paths`.
 Only `src/` and `lib/` are added to the list of include paths. You'll have to add the whole path for any nested files you want to include.
 
-You can add library' binaries (static or dynamic) and their headers to `lib/lib_name`, and then add them to the project with:
+You can add libraries/dependencies to the project like this:
 ```c++
 // build.cpp
-project->add_dependency({ .name = "lib_name" });
+
+// Dynamic linking with a system copy by default
+project->add_dependency({ name = "lib_name" }):
+
+// Dynamic linking with a system copy explicitly
+project->add_dependency({
+    .name     = "lib_name"
+    .linking  = Linking::Dynamic,
+    .location = Location::System }) ;
+
+// Dynamic linking with a local copy
+// (On macOS, it relies on the install name being the same as the file name)
+project->add_dependency({
+    .name     = "lib_name",
+    .linking  = Linking::Dynamic,
+    .location = Location::Local });
+
+// Static linking: location is ignored and assumed `Local`
+project->add_dependency({
+    .name = "lib_name",
+    .linking = Linking::Static });
+
+// Single Header: Just a dummy at the moment
+project->add_dependency({
+    .name    = "lib_name",
+    .linking = Linking::SingleHeader });
 ```
-System (aka installed) libraries don't need an directory in `lib`.
+- `Local` libraries will look for binaries (static or dynamic) and headers in `lib/lib_name`
+- `System` (aka installed) libraries don't need a directory in `lib`.
+- Single Header libraries don't *need* to be in `lib` but it's recommended to place them there.
 
 
 ## Planned features
