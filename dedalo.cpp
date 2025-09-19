@@ -185,7 +185,11 @@ struct Version
 
 struct Target
 {
-    using ScriptPtr = bool(*)();
+    struct ScriptPtr
+    {
+        bool (*func)() = nullptr;
+        String name = "";
+    };
 
     String       name               = "UNNAMED"; // Redundant but convenient
     u8           optimization_level = 0;
@@ -916,9 +920,10 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
 
         for( u8 i = 0; i < target->pre_build_scripts.size(); ++i )
         {
-            assert( target->pre_build_scripts[i] != nullptr );
-            INFO( "Running pre-build script #{}...", i );
-            if( target->pre_build_scripts[i]() == false )
+            let script = target->pre_build_scripts[i];
+            assert( script.func != nullptr );
+            INFO( "Running pre-build script #{}: '{}' ...", i+1, script.name );
+            if( script.func() == false )
             {
                 ERROR( "Pre-build script #{} failed!", i );
             }
@@ -946,9 +951,10 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
 
         for( u8 i = 0; i < target->post_build_scripts.size(); ++i )
         {
-            assert( target->post_build_scripts[i] != nullptr );
-            INFO( "Running post-build script #{}...", i );
-            if( target->post_build_scripts[i]() == false )
+            let script = target->post_build_scripts[i];
+            assert( script.func != nullptr );
+            INFO( "Running post-build script #{}: '{}'...", i+1, script.name );
+            if( script.func() == false )
             {
                 ERROR( "Post-build script #{} failed!", i );
             }
