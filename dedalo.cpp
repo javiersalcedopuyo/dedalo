@@ -320,6 +320,13 @@ struct Project
     }
 
 
+    constexpr fun add_ignored_path( const Path& path )
+    {
+        for( var& target: targets )
+            target.ignored_paths.push_back( path );
+    }
+
+
     String       name = "UNNAMED";
     String       description;
     Version      version;
