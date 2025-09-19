@@ -72,7 +72,7 @@ A `Release` and `Debug` targets are provided by default with the following confi
 {
     .name               = "Release",
     .optimization_level = 3,
-    .sanitizers         = UBSan,
+    .sanitizers         = No_Sanitizers,
     .defines            = { "RELEASE" },
     .compiler_args      = {
         "Wall",
