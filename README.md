@@ -1,5 +1,7 @@
 # dedalo.cpp
 
+![logo](logo.png)
+
 A strongly opinionated, Clang-first build system for C++.
 Build your C++ projects with just more C++.
 
