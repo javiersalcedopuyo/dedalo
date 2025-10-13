@@ -41,26 +41,6 @@ using Path = fs::path;
 #define as static_cast
 
 
-// defer //////////////////////////////////////////////////////////////////////
-template<typename Lambda>
-class Deferrable
-{
-public:
-    Deferrable() = delete;
-    Deferrable( Lambda  f ): action( f ) {}
-    ~Deferrable() { action(); }
-private:
-    const Lambda action;
-};
-
-// Preprocessor magic so __COUNTER__ can be expanded correctly
-#define CONCATENATE( l, r )         DO_CONCATENATE( l, r )
-#define DO_CONCATENATE( l, r )      DO_CONCATENATE_2( l, r )
-#define DO_CONCATENATE_2( l, r )    l##r
-
-#define defer( f ) const auto CONCATENATE( _deferred, __COUNTER__ ) = Deferrable( [&](){ f; } );
-
-
 #define println(...) printf( "%s\n", fmt( __VA_ARGS__).c_str() )
 
 
@@ -363,6 +343,27 @@ struct Project
 
 
 #if !defined( INCLUDE_AS_HEADER )
+
+
+// defer ///////////////////////////////////////////////////////////////////////////////////////////
+template<typename Lambda>
+class Deferrable
+{
+public:
+    Deferrable() = delete;
+    Deferrable( Lambda  f ): action( f ) {}
+    ~Deferrable() { action(); }
+private:
+    const Lambda action;
+};
+
+// Preprocessor magic so __COUNTER__ can be expanded correctly
+#define CONCATENATE( l, r )         DO_CONCATENATE( l, r )
+#define DO_CONCATENATE( l, r )      DO_CONCATENATE_2( l, r )
+#define DO_CONCATENATE_2( l, r )    l##r
+
+#define defer( f ) const auto CONCATENATE( _deferred, __COUNTER__ ) = Deferrable( [&](){ f; } );
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include <cstdio>
 #include <dlfcn.h>
