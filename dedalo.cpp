@@ -69,55 +69,6 @@ using Path = fs::path;
 
 #define unreachable() { ERROR("Unreachable point reached!"); abort(); }
 
-static fun trim( String* input )
-{
-    assert( input );
-    // Left trim
-    {
-        var iter = std::find_if_not( input->begin(), input->end(), [](char c){ return isspace(c); } );
-        input->erase( input->begin(), iter );
-    }
-    // right trim
-    {
-        var iter = std::find_if_not( input->rbegin(), input->rend(), [](char c){ return isspace(c); } );
-        input->erase( iter.base(), input->end() );
-    }
-}
-
-
-static fun split( const String& input, const char delimiter ) -> List<std::string_view>
-{
-    var slices = List<std::string_view>{};
-
-    var start = 0u;
-    while( start < input.size() )
-    {
-        var pos = input.find( delimiter, start );
-        if( pos == std::string_view::npos )
-            pos = input.size();
-
-        slices.emplace_back( std::string_view( input ).substr( start, pos - start ) );
-        start = pos + 1;
-    }
-    return slices;
-}
-
-
-enum [[nodiscard]] ResultCode
-{
-    UNKNOWN_ERROR       = -1,
-    OK                  = 0,
-    // CLI errors
-    INVALID_ARGUMENT    = EINVAL,
-    INVALID_TARGET      = ELAST + 1,
-    INVALID_GENERATOR,
-    ALREADY_INITIALIZED,
-    BUILD_SCRIPT_LOAD_FAILED,
-    COMPILATION_FAILED,
-    LINKING_FAILED,
-    RUN_COMMAND_FAILED,
-};
-
 
 enum struct Compiler: u8 { Clang, GCC, MSVC };
 
@@ -344,6 +295,21 @@ struct Project
 
 #if !defined( INCLUDE_AS_HEADER )
 
+enum [[nodiscard]] ResultCode
+{
+    UNKNOWN_ERROR       = -1,
+    OK                  = 0,
+    // CLI errors
+    INVALID_ARGUMENT    = EINVAL,
+    INVALID_TARGET      = ELAST + 1,
+    INVALID_GENERATOR,
+    ALREADY_INITIALIZED,
+    BUILD_SCRIPT_LOAD_FAILED,
+    COMPILATION_FAILED,
+    LINKING_FAILED,
+    RUN_COMMAND_FAILED,
+};
+
 
 // defer ///////////////////////////////////////////////////////////////////////////////////////////
 template<typename Lambda>
@@ -364,6 +330,40 @@ private:
 
 #define defer( f ) const auto CONCATENATE( _deferred, __COUNTER__ ) = Deferrable( [&](){ f; } );
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+static fun trim( String* input )
+{
+    assert( input );
+    // Left trim
+    {
+        var iter = std::find_if_not( input->begin(), input->end(), [](char c){ return isspace(c); } );
+        input->erase( input->begin(), iter );
+    }
+    // right trim
+    {
+        var iter = std::find_if_not( input->rbegin(), input->rend(), [](char c){ return isspace(c); } );
+        input->erase( iter.base(), input->end() );
+    }
+}
+
+
+static fun split( const String& input, const char delimiter ) -> List<std::string_view>
+{
+    var slices = List<std::string_view>{};
+
+    var start = 0u;
+    while( start < input.size() )
+    {
+        var pos = input.find( delimiter, start );
+        if( pos == std::string_view::npos )
+            pos = input.size();
+
+        slices.emplace_back( std::string_view( input ).substr( start, pos - start ) );
+        start = pos + 1;
+    }
+    return slices;
+}
 
 #include <cstdio>
 #include <dlfcn.h>
