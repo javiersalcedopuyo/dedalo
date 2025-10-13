@@ -1,11 +1,10 @@
 #include <cstdint>
 #include <cassert>
+#include <cstdio>
 
 // STL bloat
-#include <cstring>
 #include <string>
 #include <format>
-#include <iostream>
 #include <vector>
 #include <filesystem>
 
@@ -62,7 +61,7 @@ private:
 #define defer( f ) const auto CONCATENATE( _deferred, __COUNTER__ ) = Deferrable( [&](){ f; } );
 
 
-#define println(...) std::cout << fmt(__VA_ARGS__) << std::endl;
+#define println(...) printf( "%s\n", fmt( __VA_ARGS__).c_str() )
 
 
  // TODO: Support MSVC macros
