@@ -287,17 +287,17 @@ struct Project
     }
 
     // Adds a define common to all targets
-    constexpr fun add_define( const String& def )
+    constexpr fun add_define( const char* def )
     {
         for( var& target: targets )
-            target.defines.push_back( def );
+            target.defines.emplace_back( def );
     }
 
     // Adds a compiler argument common to all targets
-    constexpr fun add_compiler_arg( const String& arg )
+    constexpr fun add_compiler_arg( const char* arg )
     {
         for( var& target: targets )
-            target.compiler_args.push_back( arg );
+            target.compiler_args.emplace_back( arg );
     }
 
     // Adds a pre-build script common to all targets
@@ -315,10 +315,10 @@ struct Project
     }
 
 
-    constexpr fun add_ignored_path( const Path& path )
+    constexpr fun add_ignored_path( const char* path )
     {
         for( var& target: targets )
-            target.ignored_paths.push_back( path );
+            target.ignored_paths.emplace_back( path );
     }
 
 
