@@ -49,7 +49,7 @@ using Path = fs::path;
     #if defined( NDEBUG )
         #define INFO(...)                println( "[DEDALO] {}",    fmt(__VA_ARGS__) )
         #define WARNING(...)
-        #define ERROR(...)               println( "⛔️ [DEDALO] ERROR: {}",   fmt(__VA_ARGS__) )
+        #define ERROR(...)               println( "[DEDALO] ⛔ ERROR: {}",   fmt(__VA_ARGS__) )
         #define UNIMPLEMENTED_MSG( ... )
     #else // NDEBUG
         #define INFO(...)                println( "💬 INFO [{} @ {} ln{}]: {}",    __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
@@ -294,6 +294,25 @@ struct Project
 
 
 #if !defined( INCLUDE_AS_HEADER )
+
+#include <chrono>
+using std::chrono::system_clock;
+using Time = std::chrono::time_point<system_clock>;
+
+
+static fun fmt_time_since( const Time start ) -> String
+{
+    using std::chrono::minutes;
+    using std::chrono::seconds;
+    using std::chrono::milliseconds;
+
+    let duration = system_clock::now() - start;
+    let m  = duration_cast< minutes >( duration );
+    let s  = duration_cast< seconds >( duration - m );
+    let ms = duration_cast< milliseconds >( duration - m - s );
+
+    return fmt( "{}:{}:{}", m, s, ms );
+}
 
 enum [[nodiscard]] ResultCode
 {
@@ -606,6 +625,9 @@ static fun compile(
     INFO( "COMPILING..." );
     // TODO: Spread the compilation across multiple threads
 
+    let start_time = system_clock::now();
+    defer( INFO( "⏱️ Compilation phase took {}", fmt_time_since( start_time ) ) );
+
     let compiler_name  = get_compiler_name( project.compiler );
     let compiler_flags = get_flags_from( target );
     let defines        = get_defines_from( target );
@@ -687,6 +709,10 @@ static fun compile(
 static fun link( const Project& project, const Target& target ) -> ResultCode
 {
     INFO( "LINKING..." );
+
+    let start_time = system_clock::now();
+    defer( INFO( "⏱️ Linking phase took {}", fmt_time_since( start_time ) ) );
+
     var command = get_compiler_name( project.compiler );
 
     command += get_sanitizer_flags( target );
@@ -805,6 +831,9 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
 
 static fun compile_config( bool* has_changed ) -> ResultCode
 {
+    let start_time = system_clock::now();
+    defer( INFO( "⏱️ Compiling the build config took {}", fmt_time_since( start_time ) ) );
+
     assert( has_changed );
 
     constant so_path  = "./build/build_script.so";
@@ -867,6 +896,8 @@ static fun build_compile_commands_json()
 
 static fun build( String target_name, const bool run_after_build ) -> ResultCode
 {
+    let start_time = system_clock::now();
+
     // Make sure the build directories exist
     fs::create_directories( obj_output_dir );
     fs::create_directories( dep_output_dir );
@@ -908,6 +939,8 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
 
         for( u8 i = 0; i < target->pre_build_scripts.size(); ++i )
         {
+            let script_start_time = system_clock::now();
+
             let script = target->pre_build_scripts[i];
             assert( script.func != nullptr );
             INFO( "Running pre-build script #{}: '{}' ...", i+1, script.name );
@@ -915,6 +948,7 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
             {
                 ERROR( "Pre-build script #{} failed!", i );
             }
+            INFO( "⏱️ '{}' took {}", script.name, fmt_time_since( script_start_time ) );
         }
 
         // Find all the source files
@@ -939,6 +973,8 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
 
         for( u8 i = 0; i < target->post_build_scripts.size(); ++i )
         {
+            let script_start_time = system_clock::now();
+
             let script = target->post_build_scripts[i];
             assert( script.func != nullptr );
             INFO( "Running post-build script #{}: '{}'...", i+1, script.name );
@@ -946,7 +982,10 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
             {
                 ERROR( "Post-build script #{} failed!", i );
             }
+            INFO( "⏱️ '{}' took {}", script.name, fmt_time_since( script_start_time ) );
         }
+
+        INFO( "⏱️ Building phase took {}", fmt_time_since( start_time ) );
 
         if( run_after_build )
         {
