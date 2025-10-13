@@ -8,7 +8,6 @@
 #include <iostream>
 #include <vector>
 #include <filesystem>
-#include <optional>
 
 
 // Rust at home ///////////////////////////////////////////////////////////////
@@ -34,10 +33,6 @@ using f64 = double;
 
 using String = std::string;
 #define fmt std::format
-
-template<typename T>
-using Opt = std::optional<T>;
-[[ maybe_unused ]] constant None = std::nullopt;
 
 template<typename T>
 using List = std::vector<T>;
