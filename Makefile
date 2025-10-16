@@ -3,7 +3,10 @@ EXECUTABLE_NAME=ddl
 CC = clang++
 CFLAGS = -std=c++20\
 		 -Werror -Wall -pedantic\
-		 -DENABLE_LOGS
+		 -DENABLE_LOGS\
+		 -fno-exceptions\
+		 -fno-rtti
+
 
 RELEASE_FLAGS = -O3 -DNDEBUG
 DEBUG_FLAGS   = -MJ tmp.json\
