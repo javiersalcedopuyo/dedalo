@@ -8,6 +8,12 @@
 #include <vector>
 #include <filesystem>
 
+// Multi-threading
+#include <thread>
+#include <stop_token>
+using Thread    = std::thread;
+using StopSrc   = std::stop_source;
+using StopToken = std::stop_token;
 
 // Rust at home ///////////////////////////////////////////////////////////////
 #define fun auto
@@ -350,6 +356,8 @@ private:
 #define defer( f ) const auto CONCATENATE( _deferred, __COUNTER__ ) = Deferrable( [&](){ f; } );
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+constexpr fun min( const auto a, const auto b ) ->  auto { return a < b ? a : b; }
+constexpr fun max( const auto a, const auto b ) ->  auto { return a > b ? a : b; }
 
 static fun trim( String* input )
 {
@@ -628,81 +636,142 @@ static fun compile(
     let start_time = system_clock::now();
     defer( INFO( "⏱️ Compilation phase took {}", fmt_time_since( start_time ) ) );
 
-    let compiler_name  = get_compiler_name( project.compiler );
-    let compiler_flags = get_flags_from( target );
-    let defines        = get_defines_from( target );
-
-    // TODO: Use the dependency files in `build/dep` to only compile out of date files
-
-    for( let& source_file: cpp_paths )
+    struct ThreadCtx
     {
-        assert( source_file.is_relative() );
+        u32     max_files_per_thread;
+        String  compiler_name;
+        String  compiler_flags;
+        String  defines;
+        u8      cpp_version;
+        u8      optimization_level;
+        bool    generate_compile_commands;
+        bool    force_compilation;
+    };
 
-        // FIXME: There must be a better way to do this. Perhaps with string views?
-        var src_relative_cpp_path = String();
-        for( let& dir: source_file )
+
+    // TODO: Add logging
+    let compile_task = [](
+        const u32               thread_idx,
+        const StopToken         st,
+        const ThreadCtx&        ctx,
+        const List<Path>&       cpp_paths,
+              List<ResultCode>* thread_results )
+    {
+        assert( thread_results );
+        assert( thread_idx < thread_results->size() );
+
+        let start = thread_idx * ctx.max_files_per_thread;
+        let end   = min( start + ctx.max_files_per_thread, cpp_paths.size() );
+        assert( start < cpp_paths.size() );
+
+        for( var i = start; i < end; ++i )
         {
-            if( dir != Path( "src" ) )
+            if( st.stop_requested() )
+                return;
+
+            let& source_file = cpp_paths[ i ];
+
+            assert( source_file.is_relative() && "Something weird happened gathering the paths." );
+
+            // FIXME: There must be a better way to do this. Perhaps with string views?
+            var src_relative_cpp_path = String();
+            for( let& dir: source_file )
             {
-                src_relative_cpp_path += "/" + dir.string();
+                if( dir != Path( "src" ) )
+                {
+                    src_relative_cpp_path += "/" + dir.string();
+                }
+            }
+
+            let out_obj_path = Path( obj_output_dir + src_relative_cpp_path + ".o" );
+            let out_dep_path = Path( dep_output_dir + src_relative_cpp_path + ".d" );
+
+            // Make sure we're replicating the ./src tree in the obj and deps directories
+            fs::create_directories( out_obj_path.parent_path() );
+            fs::create_directories( out_dep_path.parent_path() );
+
+            if( !ctx.force_compilation and !needs_recompiling( out_obj_path, out_dep_path ) )
+            {
+                continue;
+            }
+
+            var command = fmt(
+                "{} -std=c++{} {} {} -O{} {} -c {} -o {} -MMD -MF {}",
+                ctx.compiler_name,
+                ctx.cpp_version,
+                ctx.compiler_flags,
+                ctx.defines,
+                ctx.optimization_level,
+                include_paths,
+                source_file.string(),
+                out_obj_path.string(),
+                out_dep_path.string() );
+
+            if( ctx.generate_compile_commands )
+            {
+                // Make sure we're replicating the ./src tree in the compile_commands.json temp directory
+                let out_json_path = Path( json_temp_dir.string() + src_relative_cpp_path + ".json" );
+                fs::create_directories( out_json_path.parent_path() );
+                command += fmt( " -MJ {} ", out_json_path.string() );
+
+                // TODO: Is this necessary on Windows too?
+                #if !defined( _WIN32 )
+                {
+                    // This is unnecessary for compilation, but clangd (the LSP not the compiler)
+                    // doesn't seem to find system headers without it.
+                    command += " -I/usr/local/include";
+                }
+                #endif
+            }
+            if( system( command.c_str() ) != OK )
+            {
+                thread_results->at( thread_idx ) = COMPILATION_FAILED;
+                return;
             }
         }
+        thread_results->at( thread_idx ) = OK;
+    };
 
-        let out_obj_path = Path( obj_output_dir + src_relative_cpp_path + ".o" );
-        let out_dep_path = Path( dep_output_dir + src_relative_cpp_path + ".d" );
 
-        // Make sure we're replicating the ./src tree in the obj and deps directories
-        fs::create_directories( out_obj_path.parent_path() );
-        fs::create_directories( out_dep_path.parent_path() );
+    // TODO: Spread the remaining files across all the threads rather than spawning a dedicated one
+    let num_threads = min( Thread::hardware_concurrency(), cpp_paths.size() );
+    let thread_ctx = ThreadCtx {
+        .max_files_per_thread       = as<u32>( std::ceil( as<f32>( cpp_paths.size() ) / as<f32>( num_threads ) ) ),
+        .compiler_name              = get_compiler_name( project.compiler ),
+        .compiler_flags             = get_flags_from( target ),
+        .defines                    = get_defines_from( target ),
+        .cpp_version                = project.cpp_version,
+        .optimization_level         = target.optimization_level,
+        .generate_compile_commands  = project.generate_compile_commands,
+        .force_compilation          = force_compilation };
 
-        if( !force_compilation and !needs_recompiling( out_obj_path, out_dep_path ) )
+    INFO( "Compiling {} source files with {} threads.", cpp_paths.size(), num_threads );
+
+    var thread_results  = List<ResultCode>{ num_threads, OK };
+    var compile_threads = List<Thread>{};
+    compile_threads.reserve( num_threads );
+
+    var stop_src = StopSrc{};
+    for( var i = 0; i < num_threads; ++i )
+    {
+        compile_threads.emplace_back(
+            compile_task,
+            i,
+            stop_src.get_token(),
+            thread_ctx,
+            cpp_paths,
+            &thread_results );
+    }
+
+    for( var i = 0; i < num_threads; ++i )
+    {
+        compile_threads[i].join();
+        if( thread_results[i] != OK )
         {
-            continue;
-        }
-
-        var command = fmt(
-            "{} -std=c++{} {} {} -O{} {} -c {} -o {} -MMD -MF {}",
-            compiler_name,
-            project.cpp_version,
-            compiler_flags,
-            defines,
-            target.optimization_level,
-            include_paths,
-            source_file.string(),
-            out_obj_path.string(),
-            out_dep_path.string() );
-
-        if( project.generate_compile_commands )
-        {
-            // Make sure we're replicating the ./src tree in the compile_commands.json temp directory
-            let out_json_path = Path( json_temp_dir.string() + src_relative_cpp_path + ".json" );
-            fs::create_directories( out_json_path.parent_path() );
-            command += fmt( " -MJ {} ", out_json_path.string() );
-
-            // TODO: Is this necessary on Windows too?
-            #if !defined( _WIN32 )
-            {
-                // This is unnecessary for compilation, but clangd (the LSP not the compiler)
-                // doesn't seem to find system headers without it.
-                command += " -I/usr/local/include";
-            }
-            #endif
-        }
-
-        INFO( "{}", command );
-
-        // TODO: Accumulate the errors and continue compiling?
-        if( let error = system( command.c_str() ) )
-        {
-            ERROR( "Compilation of file \"{}\" failed with error {}.\n"
-                   "Command:\n\t{}",
-                      source_file.filename().string(),
-                      error,
-                      command );
-            return COMPILATION_FAILED;
+            stop_src.request_stop();
         }
     }
-    return OK;
+    return stop_src.stop_requested() ? COMPILATION_FAILED : OK;
 }
 
 // FIXME: This is probably doing too many allocations by concatenating strings
