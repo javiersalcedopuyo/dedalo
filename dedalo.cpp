@@ -869,7 +869,7 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
             {
                 // Nothing to link
                 // TODO: If a path is provided, copy it into lib/dep_name
-                continue;
+                break;
             }
         }
         command += " " + dependency.linker_flags;
