@@ -110,6 +110,7 @@ struct Target
     u8           sanitizers         = No_Sanitizers;
     List<String> defines            = {};
     List<String> compiler_args      = {};
+    List<String> linker_flags       = {};
     List<Path>   ignored_paths      = {};
 
     List<ScriptPtr> pre_build_scripts  = {};
@@ -235,6 +236,13 @@ struct Project
         for( var& target: targets )
             target.compiler_args.emplace_back( arg );
     }
+
+    // Adds extra flags to the linker for all targets
+    constexpr fun add_linker_flag( const char* flag )
+    {
+        for( var& target: targets )
+            target.linker_flags.emplace_back( flag );
+    };
 
     // Adds a pre-build script common to all targets
     constexpr fun add_pre_build_script( Target::ScriptPtr script )
@@ -873,6 +881,11 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
             }
         }
         command += " " + dependency.linker_flags;
+    }
+
+    for( let& flag: target.linker_flags )
+    {
+        command += " -" + flag;
     }
 
     #if defined( __APPLE__ )
