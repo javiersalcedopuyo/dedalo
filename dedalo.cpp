@@ -141,6 +141,14 @@ struct Dependency
     List<String> targets      = { "All" };
 };
 
+#if defined( __APPLE__ )
+struct Framework
+{
+    String       name         = "UNNAMED";
+    List<String> targets      = { "All" };
+};
+#endif // __APPLE__
+
 
 struct Project
 {
@@ -196,6 +204,18 @@ struct Project
         }
         dependencies.push_back( dependency );
     }
+
+#if defined( __APPLE__ )
+    // TODO: Support local frameworks
+    constexpr fun add_framework( const Framework& framework )
+    {
+        assert( framework.name != "UNNAMED" );
+        assert( !framework.name.empty() );
+
+        // This is just for the linker so I don't really care if it already exists
+        frameworks.push_back( framework );
+    }
+#endif // __APPLE__
 
     constexpr fun find_target( const String& name ) -> Target*
     {
@@ -304,6 +324,10 @@ struct Project
     };
 
     List<Dependency> dependencies{};
+
+#if defined( __APPLE__ )
+    List<Framework> frameworks{};
+#endif
 };
 
 
@@ -890,6 +914,14 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
 
     #if defined( __APPLE__ )
     {
+        for( let& framework: project.frameworks )
+        {
+            // FIXME: Improve this lookup
+            if( !contains( framework.targets, "All" ) and !contains( framework.targets, target.name ) )
+                continue;
+
+            command += " -framework " + framework.name;
+        }
         // The runtime doesn't seem to find system libraries stored in `/usr/local/lib`
         // (despite them linking fine) because that path is not in the @rpath.
         command += " -Wl,-rpath,/usr/local/lib";
