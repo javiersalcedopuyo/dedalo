@@ -368,6 +368,14 @@ struct Project
 };
 
 
+using CString = const char*;
+struct MainArgvSlice
+{
+    const CString* data = nullptr;
+    const u32      size = 0;
+};
+
+
 #if !defined( INCLUDE_AS_HEADER )
 
 #include <chrono>
@@ -472,7 +480,7 @@ static let new_project_template = String(R"(
 #undef INCLUDE_AS_HEADER
 
 extern "C"
-void build( Project* project )
+void build( Project*, const MainArgvSlice args )
 {
     assert( project );
 
@@ -480,6 +488,18 @@ void build( Project* project )
     // You can override them by creating a new target with the same name.
     // "Debug" is the default target when none is provided to the `run` command.
     *project = Project({ .name = "##NAME##" });
+
+    // You can add a system (dynamic) dependency like this:
+    // project->add_dependency({ .name = "dependecy_name" });
+
+    // For static and/or local dependcies refer to the README, or just have a look at the code.
+
+    // Any arguments after the target name are passed to the build script:
+    // for( auto i = 0; i < args.size; ++i )
+    // {
+    //     const char* arg = args.data[ i ];
+    //     // ...
+    // }
 }
 )");
 
@@ -502,7 +522,7 @@ static let obj_output_dir = String( "./build/obj"       );
 static let lto_cache_dir  = String( "./build/cache/lto" );
 
 
-using BuildCfgFunPtr = void(*)(Project*);
+using BuildCfgFunPtr = void(*)( Project*, const MainArgvSlice args );
 BuildCfgFunPtr build_cfg = nullptr;
 
 
@@ -1100,7 +1120,7 @@ static fun build_compile_commands_json()
 }
 
 
-static fun build( String target_name, const bool run_after_build ) -> ResultCode
+static fun build( String target_name, const bool run_after_build, const MainArgvSlice args ) -> ResultCode
 {
     let start_time = system_clock::now();
 
@@ -1133,7 +1153,7 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
     }
 
     var project = Project();
-    build_cfg( &project );
+    build_cfg( &project, args );
     assert( project.name != "UNNAMED" );
 
     if( target_name.empty() )
@@ -1206,6 +1226,7 @@ static fun build( String target_name, const bool run_after_build ) -> ResultCode
     }
     else
     {
+        ERROR( "Target '{}' doesn't exist.", target_name );
         return INVALID_TARGET;
     }
 }
@@ -1250,15 +1271,23 @@ fun main( i32 argc, char* argv[] ) -> i32
     {
         return init();
     }
-    else if( cmd == "build" )
+    else if( cmd == "build" or cmd == "run" )
     {
-        let target = argc > 2 ? argv[2] : "";
-        return build( target, /*run_after_build*/ false );
-    }
-    else if( cmd == "run" )
-    {
-        let target = argc > 2 ? argv[2] : "";
-        return build( target, /*run_after_build*/ true );
+        var target = String("");
+        let run_after_build = ( cmd == "run" );
+
+        // Pass the remaining args to the build script
+        var first_remaining_arg = 2u;
+        if( argc > 2 )
+        {
+            target = argv[2];
+            ++first_remaining_arg;
+        }
+        let remaining_args = MainArgvSlice{
+            .data = argv + first_remaining_arg,
+            .size = as<u32>( argc ) - first_remaining_arg };
+
+        return build( target, run_after_build, remaining_args );
     }
     else if( cmd == "clean" )
     {
