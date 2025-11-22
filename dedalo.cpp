@@ -73,7 +73,22 @@ using Path = fs::path;
 #endif // ENABLE_LOGS
 
 
-#define unreachable() { ERROR("Unreachable point reached!"); abort(); }
+#if defined( NDEBUG )
+#define PANIC(...) do\
+    {\
+        println( "💀 FATAL ERROR: {}", fmt(__VA_ARGS__) );\
+        abort();\
+    } while(0)
+#else
+#define PANIC(...) do\
+    {\
+        println( "💀 FATAL ERROR [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) );\
+        abort();\
+    } while(0)
+#endif
+
+
+#define UNREACHABLE do { ERROR("Unreachable point reached!"); abort(); } while(0)
 
 
 enum struct Compiler: u8 { Clang, GCC, MSVC };
@@ -131,6 +146,13 @@ enum struct Linking: u8
     SingleHeader
 };
 
+enum struct LTO: u8
+{
+    None,
+    Full,
+    Incremental // Only in Clang
+};
+
 struct Dependency
 {
     String       name         = "UNNAMED";
@@ -166,6 +188,7 @@ struct Project
         bool         generate_compile_commands = true;
         List<String> command_line_arguments    = {};
         String       default_target            = "Debug";
+        LTO          link_time_optimizations   = LTO::None;
     };
 
     Project() = default;
@@ -180,7 +203,8 @@ struct Project
         enable_cpp_extensions(      args.enable_cpp_extensions ),
         generate_compile_commands(  args.generate_compile_commands ),
         command_line_arguments(     args.command_line_arguments ),
-        default_target(             args.default_target )
+        default_target(             args.default_target ),
+        link_time_optimizations(    args.link_time_optimizations )
     {}
 
     // TODO: Add more validation
@@ -286,6 +310,17 @@ struct Project
     }
 
 
+    constexpr fun set_link_time_optimizations( LTO mode )
+    {
+        if( mode == LTO::Incremental and this->compiler != Compiler::Clang )
+        {
+            WARNING( "Thin LTO is only supported in Clang. Full mode will be used instead." );
+            mode = LTO::Full;
+        }
+        link_time_optimizations = mode;
+    }
+
+
     String       name = "UNNAMED";
     String       description;
     Version      version;
@@ -297,6 +332,8 @@ struct Project
     bool         generate_compile_commands;
     List<String> command_line_arguments;
     String       default_target; // `build` and `run` will use this target if none is provided
+    LTO          link_time_optimizations;
+
 
     List<Target> targets
     {
@@ -456,12 +493,13 @@ int main( int argc, char* argv[] )
 )");
 
 
-static let include_paths  = String( " -Isrc -Ilib"    ); // TODO: Make this an array of paths?
-static let dep_output_dir = String( "./build/dep"     );
-static let bin_output_dir = String( "./build/bin"     );
-static let libraries_dir  = String( "./lib"           );
-static let json_temp_dir  = Path  ( "./build/json"    );
-static let obj_output_dir = String( "./build/obj" );
+static let include_paths  = String( " -Isrc -Ilib"      ); // TODO: Make this an array of paths?
+static let dep_output_dir = String( "./build/dep"       );
+static let bin_output_dir = String( "./build/bin"       );
+static let libraries_dir  = String( "./lib"             );
+static let json_temp_dir  = Path  ( "./build/json"      );
+static let obj_output_dir = String( "./build/obj"       );
+static let lto_cache_dir  = String( "./build/cache/lto" );
 
 
 using BuildCfgFunPtr = void(*)(Project*);
@@ -487,8 +525,9 @@ fun init() -> ResultCode
     {
         fs::create_directory( "lib" );
         // TODO: fs::create_directory( "tests"  );
-        fs::create_directories( obj_output_dir );
         // TODO: Create a cache and/or other build system files (ninja, make, CMake...)
+        fs::create_directories( obj_output_dir );
+        fs::create_directories( lto_cache_dir  ); // FIXME: I think this is not used by MSCV
 
         fs::create_directory( "src" );
         {
@@ -557,9 +596,9 @@ static constexpr fun get_compiler_name( const Compiler compiler ) -> String
     switch (compiler)
     {
         case Compiler::Clang: return "clang++";
-        case Compiler::GCC:   WARNING( "GCC is untested at the moment." ); return "gcc";
-        case Compiler::MSVC:  UNIMPLEMENTED_MSG( "No support for MSVC yet" ); return "CL";
-        default: unreachable();
+        case Compiler::GCC:   WARNING( "GCC is untested at the moment." ); return "gcc++";
+        case Compiler::MSVC:  PANIC( "No support for MSVC yet" );          return "CL";
+        default:              UNREACHABLE;
     }
 }
 
@@ -670,14 +709,15 @@ static fun compile(
 
     struct ThreadCtx
     {
-        u32     max_files_per_thread;
-        String  compiler_name;
-        String  compiler_flags;
-        String  defines;
-        u8      cpp_version;
-        u8      optimization_level;
-        bool    generate_compile_commands;
-        bool    force_compilation;
+        u32      max_files_per_thread;
+        Compiler compiler;
+        String   compiler_flags;
+        String   defines;
+        u8       cpp_version;
+        u8       optimization_level;
+        bool     generate_compile_commands;
+        bool     force_compilation;
+        LTO      link_time_optimizations;
     };
 
 
@@ -729,7 +769,7 @@ static fun compile(
 
             var command = fmt(
                 "{} -std=c++{} {} {} -O{} {} -c {} -o {} -MMD -MF {}",
-                ctx.compiler_name,
+                get_compiler_name( ctx.compiler ),
                 ctx.cpp_version,
                 ctx.compiler_flags,
                 ctx.defines,
@@ -755,6 +795,26 @@ static fun compile(
                 }
                 #endif
             }
+
+            if( ctx.link_time_optimizations != LTO::None )
+            {
+                switch( ctx.compiler )
+                {
+                    case Compiler::GCC:
+                    {   command += " -lfto";
+                        if( ctx.link_time_optimizations == LTO::Incremental )
+                        {
+                            // FIXME: I'm not entirely sure this is necessary
+                            command += fmt( " -lfto-incremental={}", lto_cache_dir );
+                        }
+                        break;
+                    }
+                    case Compiler::Clang: command += ctx.link_time_optimizations == LTO::Incremental ? "-lfto=thin" : "-lfto=full"; break;
+                    case Compiler::MSVC:  command += "/GL"; break;
+                    default: UNREACHABLE;
+                }
+            }
+
             if( system( command.c_str() ) != OK )
             {
                 thread_results->at( thread_idx ) = COMPILATION_FAILED;
@@ -769,13 +829,14 @@ static fun compile(
     let num_threads = min( Thread::hardware_concurrency(), cpp_paths.size() );
     let thread_ctx = ThreadCtx {
         .max_files_per_thread       = as<u32>( std::ceil( as<f32>( cpp_paths.size() ) / as<f32>( num_threads ) ) ),
-        .compiler_name              = get_compiler_name( project.compiler ),
+        .compiler                   = project.compiler,
         .compiler_flags             = get_flags_from( target ),
         .defines                    = get_defines_from( target ),
         .cpp_version                = project.cpp_version,
         .optimization_level         = target.optimization_level,
         .generate_compile_commands  = project.generate_compile_commands,
-        .force_compilation          = force_compilation };
+        .force_compilation          = force_compilation,
+        .link_time_optimizations    = project.link_time_optimizations };
 
     INFO( "Compiling {} source files with {} threads.", cpp_paths.size(), num_threads );
 
@@ -927,6 +988,37 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
         command += " -Wl,-rpath,/usr/local/lib";
     }
     #endif
+
+    if( project.link_time_optimizations != LTO::None )
+    {
+        switch( project.compiler )
+        {
+            case Compiler::GCC:
+            {
+                command += " -lfto";
+                if( project.link_time_optimizations == LTO::Incremental )
+                {
+                    command += fmt( " -lfto-incremental={}", lto_cache_dir );
+                }
+                break;
+            }
+            case Compiler::Clang:
+            {
+                if( project.link_time_optimizations == LTO::Incremental )
+                {
+                    // TODO: Add a cache path (atm not working on macOS for some reason)
+                    command += " -flto=thin";
+                }
+                else
+                {
+                    command += "-lfto=full";
+                }
+                break;
+            }
+            case Compiler::MSVC:  command += project.link_time_optimizations == LTO::Incremental ? "/LTGC:INCREMENTAL" : "/LTGC";      break;
+            default: UNREACHABLE;
+        }
+    }
 
     command += fmt( " -o {}/{}", bin_output_dir, project.name );
 
