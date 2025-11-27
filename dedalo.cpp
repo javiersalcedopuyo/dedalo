@@ -21,6 +21,8 @@ using StopToken = std::stop_token;
 #define let auto const
 #define constant static constexpr auto
 
+#define file_private static // For static free functions in cpp files
+
 namespace FS = std::filesystem;
 
 using u8  = uint8_t;
@@ -383,7 +385,7 @@ using std::chrono::system_clock;
 using Time = std::chrono::time_point<system_clock>;
 
 
-static fun fmt_time_since( const Time start ) -> String
+file_private fun fmt_time_since( const Time start ) -> String
 {
     using std::chrono::minutes;
     using std::chrono::seconds;
@@ -436,7 +438,7 @@ private:
 constexpr fun min( const auto a, const auto b ) ->  auto { return a < b ? a : b; }
 constexpr fun max( const auto a, const auto b ) ->  auto { return a > b ? a : b; }
 
-static fun trim( String* input )
+file_private fun trim( String* input )
 {
     assert( input );
     // Left trim
@@ -452,7 +454,7 @@ static fun trim( String* input )
 }
 
 
-static fun split( const String& input, const char delimiter ) -> List<std::string_view>
+file_private fun split( const String& input, const char delimiter ) -> List<std::string_view>
 {
     var slices = List<std::string_view>{};
 
@@ -578,7 +580,7 @@ fun init() -> ResultCode
 }
 
 
-static fun gather_files(
+file_private fun gather_files(
     const Path&         in_path,
     const List<String>& extensions,
     const List<Path>&   excluded_paths,
@@ -662,7 +664,7 @@ static constexpr fun get_defines_from( const Target& target ) -> String
 }
 
 
-static fun needs_recompiling(
+file_private fun needs_recompiling(
     const Path& obj_path,
     const Path& dep_path )
 -> bool
@@ -714,7 +716,7 @@ static fun needs_recompiling(
 }
 
 
-static fun compile(
+file_private fun compile(
     const Project&    project,
     const Target&     target,
     const List<Path>& cpp_paths,
@@ -888,7 +890,7 @@ static fun compile(
 }
 
 // FIXME: This is probably doing too many allocations by concatenating strings
-static fun link( const Project& project, const Target& target ) -> ResultCode
+file_private fun link( const Project& project, const Target& target ) -> ResultCode
 {
     INFO( "LINKING..." );
 
@@ -1055,7 +1057,7 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
 }
 
 
-static fun compile_config( bool* has_changed ) -> ResultCode
+file_private fun compile_config( bool* has_changed ) -> ResultCode
 {
     let start_time = system_clock::now();
     defer( INFO( "⏱️ Compiling the build config took {}", fmt_time_since( start_time ) ) );
@@ -1083,7 +1085,7 @@ static fun compile_config( bool* has_changed ) -> ResultCode
 }
 
 
-static fun build_compile_commands_json()
+file_private fun build_compile_commands_json()
 {
     if( !FS::is_directory( json_temp_dir ) )
     {
@@ -1120,7 +1122,7 @@ static fun build_compile_commands_json()
 }
 
 
-static fun build( String target_name, const bool run_after_build, const MainArgvSlice args ) -> ResultCode
+file_private fun build( String target_name, const bool run_after_build, const MainArgvSlice args ) -> ResultCode
 {
     let start_time = system_clock::now();
 
