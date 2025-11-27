@@ -385,6 +385,16 @@ using std::chrono::system_clock;
 using Time = std::chrono::time_point<system_clock>;
 
 
+file_private fun is_directory_empty( const Path& path) -> bool
+{
+    if( FS::exists( path ) and FS::is_directory( path ) )
+    {
+        return FS::directory_iterator( path ) == FS::directory_iterator{};
+    }
+    return true;
+}
+
+
 file_private fun fmt_time_since( const Time start ) -> String
 {
     using std::chrono::minutes;
@@ -412,7 +422,27 @@ enum [[nodiscard]] ResultCode
     COMPILATION_FAILED,
     LINKING_FAILED,
     RUN_COMMAND_FAILED,
+    MISSING_DEPENDENCY,
 };
+
+file_private fun stringify_result( const ResultCode res ) -> String
+{
+    switch( res )
+    {
+        case UNKNOWN_ERROR:             return "UNKNOWN_ERROR";
+        case OK:                        return "OK";
+        case INVALID_ARGUMENT:          return "INVALID_ARGUMENT";
+        case INVALID_TARGET:            return "INVALID_TARGET";
+        case INVALID_GENERATOR:         return "INVALID_GENERATOR";
+        case ALREADY_INITIALIZED:       return "ALREADY_INITIALIZED";
+        case BUILD_SCRIPT_LOAD_FAILED:  return "BUILD_SCRIPT_LOAD_FAILED";
+        case COMPILATION_FAILED:        return "COMPILATION_FAILED";
+        case LINKING_FAILED:            return "LINKING_FAILED";
+        case RUN_COMMAND_FAILED:        return "RUN_COMMAND_FAILED";
+        case MISSING_DEPENDENCY:        return "MISSING_DEPENDENCY";
+        default:                        return std::to_string( res );
+    }
+}
 
 
 // defer ///////////////////////////////////////////////////////////////////////////////////////////
@@ -983,7 +1013,6 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
             case Linking::SingleHeader:
             {
                 // Nothing to link
-                // TODO: If a path is provided, copy it into lib/dep_name
                 break;
             }
         }
@@ -1158,6 +1187,17 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
     build_cfg( &project, args );
     assert( project.name != "UNNAMED" );
 
+    // Check that SingleHeader dependencies' directories are where they should and not empty
+    for( let& dependency: project.dependencies )
+    {
+        if( dependency.linking == Linking::SingleHeader
+            and is_directory_empty( libraries_dir + "/" + dependency.name ) )
+        {
+            ERROR( "Couldn't find single-header dependency '{}' in ./lib", dependency.name );
+            return MISSING_DEPENDENCY;
+        }
+    }
+
     if( target_name.empty() )
         target_name = project.default_target;
 
@@ -1289,7 +1329,11 @@ fun main( i32 argc, char* argv[] ) -> i32
             .data = argv + first_remaining_arg,
             .size = as<u32>( argc ) - first_remaining_arg };
 
-        return build( target, run_after_build, remaining_args );
+        if( let error = build( target, run_after_build, remaining_args ) )
+        {
+            ERROR( "Build failed with error {}", stringify_result( error ) );
+            return error;
+        }
     }
     else if( cmd == "clean" )
     {
