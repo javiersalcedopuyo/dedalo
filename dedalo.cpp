@@ -21,7 +21,7 @@ using StopToken = std::stop_token;
 #define let auto const
 #define constant static constexpr auto
 
-namespace fs = std::filesystem;
+namespace FS = std::filesystem;
 
 using u8  = uint8_t;
 using u16 = uint16_t;
@@ -42,7 +42,7 @@ using String = std::string;
 template<typename T>
 using List = std::vector<T>;
 
-using Path = fs::path;
+using Path = FS::path;
 
 #define as static_cast
 
@@ -535,7 +535,7 @@ constexpr fun contains( const Container& haystack, const T& needle ) -> bool
 
 fun init() -> ResultCode
 {
-    if( fs::is_regular_file( "build.cpp" ) )
+    if( FS::is_regular_file( "build.cpp" ) )
     {
         WARNING( "Project already initialized. Skipping." );
         return ALREADY_INITIALIZED;
@@ -543,13 +543,13 @@ fun init() -> ResultCode
 
     // Create the directory structure
     {
-        fs::create_directory( "lib" );
-        // TODO: fs::create_directory( "tests"  );
+        FS::create_directory( "lib" );
+        // TODO: FS::create_directory( "tests"  );
         // TODO: Create a cache and/or other build system files (ninja, make, CMake...)
-        fs::create_directories( obj_output_dir );
-        fs::create_directories( lto_cache_dir  ); // FIXME: I think this is not used by MSCV
+        FS::create_directories( obj_output_dir );
+        FS::create_directories( lto_cache_dir  ); // FIXME: I think this is not used by MSCV
 
-        fs::create_directory( "src" );
+        FS::create_directory( "src" );
         {
             var* main_file = fopen( "src/main.cpp", "w" );
             assert( main_file );
@@ -564,7 +564,7 @@ fun init() -> ResultCode
         assert( build_file );
 
         // Replace the project's name with the current folder's
-        let current_folder_name = fs::current_path().stem().string();
+        let current_folder_name = FS::current_path().stem().string();
         var filled_template = new_project_template;
         filled_template.replace(
             filled_template.find( name_tag ),
@@ -589,18 +589,18 @@ static fun gather_files(
     if( contains( excluded_paths, in_path ) )
         return;
 
-    if( !fs::is_directory( in_path ) )
+    if( !FS::is_directory( in_path ) )
     {
         WARNING("Path '{}' is not a directory.", in_path.string() );
         return;
     }
 
-    for( let &entry: fs::directory_iterator( in_path ) )
+    for( let &entry: FS::directory_iterator( in_path ) )
     {
-        if( fs::is_directory( entry ) )
+        if( FS::is_directory( entry ) )
             gather_files( entry.path(), extensions, excluded_paths, gathered_paths ); // Recursion, yay!
 
-        if( fs::is_regular_file( entry )
+        if( FS::is_regular_file( entry )
             and contains( extensions, entry.path().extension() )
             and !contains( excluded_paths, entry.path() ) )
         {
@@ -667,7 +667,7 @@ static fun needs_recompiling(
     const Path& dep_path )
 -> bool
 {
-    if( !fs::exists( obj_path ) )
+    if( !FS::exists( obj_path ) )
     {
         return true;
     }
@@ -676,7 +676,7 @@ static fun needs_recompiling(
     {
         defer( fclose( obj_dep_file ) );
 
-        let obj_timestamp = fs::last_write_time( obj_path );
+        let obj_timestamp = FS::last_write_time( obj_path );
 
         var  dummy         = usize( 0 );
         var  is_first_line = true;
@@ -704,7 +704,7 @@ static fun needs_recompiling(
                 if( file_paths[i] == "\\" )
                     break; // EOL
 
-                if( fs::last_write_time( file_paths[i] ) > obj_timestamp )
+                if( FS::last_write_time( file_paths[i] ) > obj_timestamp )
                     return true;
             }
         }
@@ -779,8 +779,8 @@ static fun compile(
             let out_dep_path = Path( dep_output_dir + src_relative_cpp_path + ".d" );
 
             // Make sure we're replicating the ./src tree in the obj and deps directories
-            fs::create_directories( out_obj_path.parent_path() );
-            fs::create_directories( out_dep_path.parent_path() );
+            FS::create_directories( out_obj_path.parent_path() );
+            FS::create_directories( out_dep_path.parent_path() );
 
             if( !ctx.force_compilation and !needs_recompiling( out_obj_path, out_dep_path ) )
             {
@@ -803,7 +803,7 @@ static fun compile(
             {
                 // Make sure we're replicating the ./src tree in the compile_commands.json temp directory
                 let out_json_path = Path( json_temp_dir.string() + src_relative_cpp_path + ".json" );
-                fs::create_directories( out_json_path.parent_path() );
+                FS::create_directories( out_json_path.parent_path() );
                 command += fmt( " -MJ {} ", out_json_path.string() );
 
                 // TODO: Is this necessary on Windows too?
@@ -932,10 +932,10 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
         {
             case Linking::Static:
             {
-                assert( fs::is_directory( lib_dir ) );
+                assert( FS::is_directory( lib_dir ) );
 
                 lib_path += ".a";
-                assert( fs::is_regular_file( lib_path ) );
+                assert( FS::is_regular_file( lib_path ) );
 
                 command += fmt( " {}", lib_path );
                 break;
@@ -948,11 +948,11 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
                 }
                 else if( dependency.location == Location::Local )
                 {
-                    if( fs::is_regular_file( lib_path + ".so" ) )
+                    if( FS::is_regular_file( lib_path + ".so" ) )
                     {
                         lib_path += ".so";
                     }
-                    else if( fs::is_regular_file( lib_path + ".dylib" ) )
+                    else if( FS::is_regular_file( lib_path + ".dylib" ) )
                     {
                         lib_path += ".dylib";
                     }
@@ -964,10 +964,10 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
 
                     // So it can be loaded correctly at runtime
                     // FIXME: This relies on the install name matching the file name.
-                    fs::copy_file(
+                    FS::copy_file(
                         lib_path,
                         bin_output_dir + "/" + Path( lib_path ).filename().string(),
-                        fs::copy_options::overwrite_existing );
+                        FS::copy_options::overwrite_existing );
 
                     command += fmt( " {}", lib_path );
                 }
@@ -1044,7 +1044,7 @@ static fun link( const Project& project, const Target& target ) -> ResultCode
 
     INFO( "{}", command );
 
-    fs::create_directories( bin_output_dir );
+    FS::create_directories( bin_output_dir );
 
     if( system( command.c_str() ) != OK )
     {
@@ -1065,7 +1065,7 @@ static fun compile_config( bool* has_changed ) -> ResultCode
     constant so_path  = "./build/build_script.so";
     constant cpp_path = "./build.cpp";
 
-    if( fs::exists( so_path ) and fs::last_write_time( so_path ) >= fs::last_write_time( cpp_path ) )
+    if( FS::exists( so_path ) and FS::last_write_time( so_path ) >= FS::last_write_time( cpp_path ) )
     {
         *has_changed = false;
         return OK; // The binary is up to date, no need to recompile
@@ -1085,7 +1085,7 @@ static fun compile_config( bool* has_changed ) -> ResultCode
 
 static fun build_compile_commands_json()
 {
-    if( !fs::is_directory( json_temp_dir ) )
+    if( !FS::is_directory( json_temp_dir ) )
     {
         ERROR( "`build/json` directory doesn't exist." );
         return;
@@ -1125,9 +1125,9 @@ static fun build( String target_name, const bool run_after_build, const MainArgv
     let start_time = system_clock::now();
 
     // Make sure the build directories exist
-    fs::create_directories( obj_output_dir );
-    fs::create_directories( dep_output_dir );
-    fs::create_directories( json_temp_dir );
+    FS::create_directories( obj_output_dir );
+    FS::create_directories( dep_output_dir );
+    FS::create_directories( json_temp_dir );
 
     bool config_recompiled = false;
     if( let error = compile_config( &config_recompiled ) )
@@ -1234,7 +1234,7 @@ static fun build( String target_name, const bool run_after_build, const MainArgv
 
 fun run() -> ResultCode
 {
-    let project_name = fs::current_path().stem().string();
+    let project_name = FS::current_path().stem().string();
     let command = "./" + bin_output_dir + "/" + project_name;
 
     return system( command.c_str() ) == OK
@@ -1253,7 +1253,7 @@ fun test() -> ResultCode
 
 fun clean() -> ResultCode
 {
-    fs::remove_all( "./build" );
+    FS::remove_all( "./build" );
     return OK;
 }
 
