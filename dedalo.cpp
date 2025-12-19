@@ -1,12 +1,14 @@
 #include <cstdint>
 #include <cassert>
 #include <cstdio>
+#include <cmath>
 
 // STL bloat
 #include <string>
 #include <format>
 #include <vector>
 #include <filesystem>
+#include <algorithm>
 
 // Multi-threading
 #include <thread>
@@ -436,6 +438,8 @@ enum [[nodiscard]] ResultCode
     MISSING_DEPENDENCY,
 };
 
+
+#if defined( ENABLE_LOGS )
 file_private fun stringify_result( const ResultCode res ) -> String
 {
     switch( res )
@@ -454,6 +458,7 @@ file_private fun stringify_result( const ResultCode res ) -> String
         default:                        return std::to_string( res );
     }
 }
+#endif // ENABLE_LOGS
 
 
 // defer ///////////////////////////////////////////////////////////////////////////////////////////
@@ -686,7 +691,7 @@ static constexpr fun get_sanitizer_flags( const Target& target ) -> String
 static constexpr fun get_flags_from( const Target& target ) -> String
 {
     var flags = String();
-    for( u32 i = 0; i < target.compiler_args.size(); ++i )
+    for( var i = 0u; i < target.compiler_args.size(); ++i )
     {
         flags += " -" + target.compiler_args[i];
     }
@@ -734,7 +739,7 @@ file_private fun needs_recompiling(
             trim( &line_str );
             let file_paths = split( line_str, ' ' );
 
-            for( var i = 0; i < file_paths.size(); ++i )
+            for( var i = 0u; i < file_paths.size(); ++i )
             {
                 if( is_first_line and i == 0 )
                 {
@@ -907,7 +912,7 @@ file_private fun compile(
     compile_threads.reserve( num_threads );
 
     var stop_src = StopSrc{};
-    for( var i = 0; i < num_threads; ++i )
+    for( var i = 0u; i < num_threads; ++i )
     {
         compile_threads.emplace_back(
             compile_task,
@@ -918,7 +923,7 @@ file_private fun compile(
             &thread_results );
     }
 
-    for( var i = 0; i < num_threads; ++i )
+    for( var i = 0u; i < num_threads; ++i )
     {
         compile_threads[i].join();
         if( thread_results[i] != OK )
