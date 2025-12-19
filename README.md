@@ -111,7 +111,8 @@ project->add_dependency({
     .name = "lib_name",
     .linking = Linking::Static });
 
-// Single Header: Just a dummy at the moment
+// Single Header:
+//  Just a dummy at the moment, but it'll verify that the `lib/lib_name` directory exists and it's not empty.
 project->add_dependency({
     .name    = "lib_name",
     .linking = Linking::SingleHeader });
@@ -127,6 +128,9 @@ project->add_dependency({
 - [x] Generation of `compile_commands.json`
 - [x] Incremental builds
 - [ ] Multithreaded builds
+    - [x] Basic unbalanced multithreading
+    - [ ] Logging
+    - [ ] Balanced threads (perhaps a job system)
 - [ ] `test` command
 - [ ] Local dependency management
 - [ ] Remote depenency management and/or integration with Conan.
