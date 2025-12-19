@@ -3,6 +3,11 @@
 #include <cstdio>
 #include <cmath>
 
+#if !defined( __APPLE__ )
+    #include <cerrno>
+    #define ELAST 256
+#endif // !__APPLE__
+
 // STL bloat
 #include <string>
 #include <format>
