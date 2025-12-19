@@ -384,16 +384,7 @@ struct MainArgvSlice
 using std::chrono::system_clock;
 using Time = std::chrono::time_point<system_clock>;
 
-
-file_private fun is_directory_empty( const Path& path) -> bool
-{
-    if( FS::exists( path ) and FS::is_directory( path ) )
-    {
-        return FS::directory_iterator( path ) == FS::directory_iterator{};
-    }
-    return true;
-}
-
+#if defined( ENABLE_LOGS )
 
 file_private fun fmt_time_since( const Time start ) -> String
 {
@@ -407,6 +398,26 @@ file_private fun fmt_time_since( const Time start ) -> String
     let ms = duration_cast< milliseconds >( duration - m - s );
 
     return fmt( "{}:{}:{}", m, s, ms );
+}
+
+#define TIME_SCOPE( scope_name )\
+    let start_time = system_clock::now();\
+    defer( INFO( "⏱️ {} took {}", scope_name, fmt_time_since( start_time ) ) )
+
+#else // ENABLE_LOGS
+
+#define TIME_SCOPE( scope_name )
+
+#endif // ENABLE_LOGS
+
+
+file_private fun is_directory_empty( const Path& path) -> bool
+{
+    if( FS::exists( path ) and FS::is_directory( path ) )
+    {
+        return FS::directory_iterator( path ) == FS::directory_iterator{};
+    }
+    return true;
 }
 
 enum [[nodiscard]] ResultCode
@@ -756,8 +767,7 @@ file_private fun compile(
     INFO( "COMPILING..." );
     // TODO: Spread the compilation across multiple threads
 
-    let start_time = system_clock::now();
-    defer( INFO( "⏱️ Compilation phase took {}", fmt_time_since( start_time ) ) );
+    TIME_SCOPE( "Compilation phase" );
 
     struct ThreadCtx
     {
@@ -924,8 +934,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
 {
     INFO( "LINKING..." );
 
-    let start_time = system_clock::now();
-    defer( INFO( "⏱️ Linking phase took {}", fmt_time_since( start_time ) ) );
+    TIME_SCOPE( "Linking phase" );
 
     var command = get_compiler_name( project.compiler );
 
@@ -1088,10 +1097,9 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
 
 file_private fun compile_config( bool* has_changed ) -> ResultCode
 {
-    let start_time = system_clock::now();
-    defer( INFO( "⏱️ Compiling the build config took {}", fmt_time_since( start_time ) ) );
-
     assert( has_changed );
+
+    TIME_SCOPE( "Compiling the build config" );
 
     constant so_path  = "./build/build_script.so";
     constant cpp_path = "./build.cpp";
@@ -1153,8 +1161,6 @@ file_private fun build_compile_commands_json()
 
 file_private fun build( String target_name, const bool run_after_build, const MainArgvSlice args ) -> ResultCode
 {
-    let start_time = system_clock::now();
-
     // Make sure the build directories exist
     FS::create_directories( obj_output_dir );
     FS::create_directories( dep_output_dir );
@@ -1204,56 +1210,57 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
     if( let* target = project.find_target( target_name ) )
     {
         INFO( "Starting build of project \"{}\" for target \"{}\"...", project.name, target->name );
-
-        for( u8 i = 0; i < target->pre_build_scripts.size(); ++i )
         {
-            let script_start_time = system_clock::now();
+            TIME_SCOPE( "Building phase" );
 
-            let script = target->pre_build_scripts[i];
-            assert( script.func != nullptr );
-            INFO( "Running pre-build script #{}: '{}' ...", i+1, script.name );
-            if( script.func() == false )
+            for( var i = 0u; i < target->pre_build_scripts.size(); ++i )
             {
-                ERROR( "Pre-build script #{} failed!", i );
+                let script = target->pre_build_scripts[i];
+                assert( script.func != nullptr );
+
+                TIME_SCOPE( script.name );
+
+                INFO( "Running pre-build script #{}: '{}' ...", i+1, script.name );
+                if( script.func() == false )
+                {
+                    ERROR( "Pre-build script #{} failed!", i );
+                }
             }
-            INFO( "⏱️ '{}' took {}", script.name, fmt_time_since( script_start_time ) );
-        }
 
-        // Find all the source files
-        var cpp_paths = List<Path>{};
-        gather_files( "src", {".cpp", ".cc", ".cxx"}, target->ignored_paths, &cpp_paths );
+            // Find all the source files
+            var cpp_paths = List<Path>{};
+            gather_files( "src", {".cpp", ".cc", ".cxx"}, target->ignored_paths, &cpp_paths );
 
-        // TODO: Fetch any remote dependencies and place them in lib/
-        // TODO: Link any dynamic libraries into their corresponding .so in build/bin/
+            // TODO: Fetch any remote dependencies and place them in lib/
+            // TODO: Link any dynamic libraries into their corresponding .so in build/bin/
 
-        if( let error = compile( project, *target, cpp_paths, config_recompiled ) )
-        {
-            return error;
-        }
-        if( project.generate_compile_commands )
-        {
-            build_compile_commands_json();
-        }
-        if( let error = link( project, *target ) )
-        {
-            return error;
-        }
-
-        for( u8 i = 0; i < target->post_build_scripts.size(); ++i )
-        {
-            let script_start_time = system_clock::now();
-
-            let script = target->post_build_scripts[i];
-            assert( script.func != nullptr );
-            INFO( "Running post-build script #{}: '{}'...", i+1, script.name );
-            if( script.func() == false )
+            if( let error = compile( project, *target, cpp_paths, config_recompiled ) )
             {
-                ERROR( "Post-build script #{} failed!", i );
+                return error;
             }
-            INFO( "⏱️ '{}' took {}", script.name, fmt_time_since( script_start_time ) );
-        }
+            if( project.generate_compile_commands )
+            {
+                build_compile_commands_json();
+            }
+            if( let error = link( project, *target ) )
+            {
+                return error;
+            }
 
-        INFO( "⏱️ Building phase took {}", fmt_time_since( start_time ) );
+            for( var i = 0u; i < target->post_build_scripts.size(); ++i )
+            {
+                let script = target->post_build_scripts[i];
+                assert( script.func != nullptr );
+
+                TIME_SCOPE( script.name );
+
+                INFO( "Running post-build script #{}: '{}'...", i+1, script.name );
+                if( script.func() == false )
+                {
+                    ERROR( "Post-build script #{} failed!", i );
+                }
+            }
+        }
 
         if( run_after_build )
         {
