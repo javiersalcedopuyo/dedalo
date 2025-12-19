@@ -512,7 +512,7 @@ static let new_project_template = String(R"(
 #undef INCLUDE_AS_HEADER
 
 extern "C"
-void build( Project*, const MainArgvSlice args )
+void build( Project* project, const MainArgvSlice args )
 {
     assert( project );
 
