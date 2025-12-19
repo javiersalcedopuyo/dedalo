@@ -1203,6 +1203,12 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
     build_cfg( &project, args );
     assert( project.name != "UNNAMED" );
 
+    if( project.compiler != Compiler::Clang and project.generate_compile_commands )
+    {
+        UNIMPLEMENTED_MSG( "No support for generating compile_commands.json with compilers other than Clang" );
+        project.generate_compile_commands = false;
+    }
+
     // Check that SingleHeader dependencies' directories are where they should and not empty
     for( let& dependency: project.dependencies )
     {
