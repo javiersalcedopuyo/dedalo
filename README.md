@@ -10,6 +10,8 @@ Build your C++ projects with just more C++.
 Inspired by [Swift](https://www.swift.org/documentation/server/guides/building.html) and [Zig](https://ziglang.org/learn/build-system/).
 All you need to get a C++ project up and running is a C++ compiler, no other languages, config formats, or 3rd party libraries needed.
 
+> NOTE: Atm only Clang (default) and GCC are supported
+
 
 ## You're in control
 A Makefile is provided for convenience (ironic, I know), but it's trivial to compile it yourself.

@@ -669,7 +669,7 @@ static constexpr fun get_compiler_name( const Compiler compiler ) -> String
     switch (compiler)
     {
         case Compiler::Clang: return "clang++";
-        case Compiler::GCC:   WARNING( "GCC is untested at the moment." ); return "gcc++";
+        case Compiler::GCC:   return "g++";
         case Compiler::MSVC:  PANIC( "No support for MSVC yet" );          return "CL";
         default:              UNREACHABLE;
     }
