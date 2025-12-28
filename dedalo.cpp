@@ -121,13 +121,15 @@ struct Version
 };
 
 
+struct ScriptPtr
+{
+    bool (*func)() = nullptr;
+    String name = "";
+};
+
+
 struct Target
 {
-    struct ScriptPtr
-    {
-        bool (*func)() = nullptr;
-        String name = "";
-    };
 
     String       name               = "UNNAMED"; // Redundant but convenient
     u8           optimization_level = 0;
@@ -200,6 +202,8 @@ struct Project
         String           default_target            = "Debug";
         LTO              link_time_optimizations   = LTO::None;
         List<Dependency> dependencies              = {};
+        List<ScriptPtr>  pre_build_scripts         = {};
+        List<ScriptPtr>  post_build_scripts        = {};
     #if defined( __APPLE__ )
         List<Framework>  frameworks                = {};
     #endif
@@ -230,6 +234,16 @@ struct Project
                 target.compiler_flags.end(),
                 args.common_compiler_flags.begin(),
                 args.common_compiler_flags.end() );
+
+            target.pre_build_scripts.insert(
+                target.pre_build_scripts.end(),
+                args.pre_build_scripts.begin(),
+                args.pre_build_scripts.end() );
+
+            target.post_build_scripts.insert(
+                target.post_build_scripts.end(),
+                args.post_build_scripts.begin(),
+                args.post_build_scripts.end() );
         }
     }
 
@@ -316,14 +330,14 @@ struct Project
     };
 
     // Adds a pre-build script common to all targets
-    constexpr fun add_pre_build_script( Target::ScriptPtr script )
+    constexpr fun add_pre_build_script( ScriptPtr script )
     {
         for( var& target: targets )
             target.pre_build_scripts.push_back( script );
     }
 
     // Adds a post-build script common to all targets
-    constexpr fun add_post_build_script( Target::ScriptPtr script )
+    constexpr fun add_post_build_script( ScriptPtr script )
     {
         for( var& target: targets )
             target.post_build_scripts.push_back( script );
