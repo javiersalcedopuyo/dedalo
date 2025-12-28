@@ -198,6 +198,7 @@ struct Project
         bool             generate_compile_commands = true;
         bool             enable_cpp_extensions     = false;
         List<String>     common_compiler_flags     = {};
+        List<String>     common_defines            = {};
         List<String>     command_line_arguments    = {};
         String           default_target            = "Debug";
         LTO              link_time_optimizations   = LTO::None;
@@ -234,6 +235,11 @@ struct Project
                 target.compiler_flags.end(),
                 args.common_compiler_flags.begin(),
                 args.common_compiler_flags.end() );
+
+            target.defines.insert(
+                target.defines.end(),
+                args.common_defines.begin(),
+                args.common_defines.end() );
 
             target.pre_build_scripts.insert(
                 target.pre_build_scripts.end(),
