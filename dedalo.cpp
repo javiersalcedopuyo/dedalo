@@ -133,7 +133,7 @@ struct Target
     u8           optimization_level = 0;
     u8           sanitizers         = No_Sanitizers;
     List<String> defines            = {};
-    List<String> compiler_args      = {};
+    List<String> compiler_flags     = {};
     List<String> linker_flags       = {};
     List<Path>   ignored_paths      = {};
 
@@ -186,22 +186,27 @@ struct Project
     enum Type: u8 { Executable, Library };
     struct Args
     {
-        String       name                      = "UNNAMED";
-        String       description               = "";
-        Version      version                   = {0,0,1};
-        List<String> authors                   = {};
-        Type         type                      = Executable;
-        Compiler     compiler                  = Compiler::Clang;
-        u8           cpp_version               = 20;
-        bool         enable_cpp_extensions     = false;
-        bool         generate_compile_commands = true;
-        List<String> command_line_arguments    = {};
-        String       default_target            = "Debug";
-        LTO          link_time_optimizations   = LTO::None;
+        String           name                      = "UNNAMED";
+        String           description               = "";
+        Version          version                   = {0,0,1};
+        List<String>     authors                   = {};
+        Type             type                      = Executable;
+        Compiler         compiler                  = Compiler::Clang;
+        u8               cpp_version               = 20;
+        bool             generate_compile_commands = true;
+        bool             enable_cpp_extensions     = false;
+        List<String>     common_compiler_flags     = {};
+        List<String>     command_line_arguments    = {};
+        String           default_target            = "Debug";
+        LTO              link_time_optimizations   = LTO::None;
+        List<Dependency> dependencies              = {};
+    #if defined( __APPLE__ )
+        List<Framework>  frameworks                = {};
+    #endif
     };
 
     Project() = default;
-    Project( const Args&& args ):
+    Project( const Args& args ):
         name(                       args.name ),
         description(                args.description ),
         version(                    args.version ),
@@ -213,8 +218,21 @@ struct Project
         generate_compile_commands(  args.generate_compile_commands ),
         command_line_arguments(     args.command_line_arguments ),
         default_target(             args.default_target ),
-        link_time_optimizations(    args.link_time_optimizations )
-    {}
+        link_time_optimizations(    args.link_time_optimizations ),
+        dependencies(               args.dependencies ),
+    #if defined( __APPLE__ )
+        frameworks(                 args.frameworks )
+    #endif
+    {
+        for( var &target: targets )
+        {
+            target.compiler_flags.insert(
+                target.compiler_flags.end(),
+                args.common_compiler_flags.begin(),
+                args.common_compiler_flags.end() );
+        }
+    }
+
 
     // TODO: Add more validation
     constexpr fun add_dependency( const Dependency& dependency )
@@ -287,7 +305,7 @@ struct Project
     constexpr fun add_compiler_arg( const char* arg )
     {
         for( var& target: targets )
-            target.compiler_args.emplace_back( arg );
+            target.compiler_flags.emplace_back( arg );
     }
 
     // Adds extra flags to the linker for all targets
@@ -351,7 +369,7 @@ struct Project
             .optimization_level = 0,
             .sanitizers         = ASan | UBSan,
             .defines            = { "DEBUG" },
-            .compiler_args      = {
+            .compiler_flags     = {
                 "g",
                 "Wall",
                 "Werror",
@@ -362,7 +380,7 @@ struct Project
             .optimization_level = 3,
             .sanitizers         = No_Sanitizers,
             .defines            = { "RELEASE" },
-            .compiler_args      = {
+            .compiler_flags     = {
                 "Wall",
                 "Werror",
                 "pedantic" }
@@ -698,7 +716,7 @@ static constexpr fun get_flags_from( const Target& target ) -> String
     var flags = String();
     for( var i = 0u; i < target.compiler_args.size(); ++i )
     {
-        flags += " -" + target.compiler_args[i];
+        flags += " -" + target.compiler_flags[i];
     }
     return flags + get_sanitizer_flags( target );
 }
