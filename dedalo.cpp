@@ -578,12 +578,21 @@ void build( Project* project, const MainArgvSlice args )
     // "Debug" and "Release" targets are provided by default.
     // You can override them by creating a new target with the same name.
     // "Debug" is the default target when none is provided to the `run` command.
-    *project = Project({ .name = "##NAME##" });
+    // C++20 is the default version.
+    *project = Project(
+    {
+        .name = "##NAME##",
+        .dependencies =
+        {
+            // You can add a system (dynamic) dependency like this:
+            { .name = "dependecy_name" }
+        }
+    });
 
-    // You can add a system (dynamic) dependency like this:
+    // Or you can add the dependencies after creating the project like this:
     // project->add_dependency({ .name = "dependecy_name" });
 
-    // For static and/or local dependcies refer to the README, or just have a look at the code.
+    // For static and/or local dependencies refer to the README, or just have a look at the code.
 
     // Any arguments after the target name are passed to the build script:
     // for( auto i = 0; i < args.size; ++i )
