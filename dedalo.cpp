@@ -301,8 +301,8 @@ struct Project
             target.defines.emplace_back( def );
     }
 
-    // Adds a compiler argument common to all targets
-    constexpr fun add_compiler_arg( const char* arg )
+    // Adds a compiler flag common to all targets
+    constexpr fun add_compiler_flag( const char* arg )
     {
         for( var& target: targets )
             target.compiler_flags.emplace_back( arg );
