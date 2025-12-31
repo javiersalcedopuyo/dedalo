@@ -585,7 +585,7 @@ void build( Project* project, const MainArgvSlice args )
         .dependencies =
         {
             // You can add a system (dynamic) dependency like this:
-            { .name = "dependecy_name" }
+            // { .name = "dependecy_name" }
         }
     });
 
@@ -743,7 +743,7 @@ static constexpr fun get_sanitizer_flags( const Target& target ) -> String
 static constexpr fun get_flags_from( const Target& target ) -> String
 {
     var flags = String();
-    for( var i = 0u; i < target.compiler_args.size(); ++i )
+    for( var i = 0u; i < target.compiler_flags.size(); ++i )
     {
         flags += " -" + target.compiler_flags[i];
     }
