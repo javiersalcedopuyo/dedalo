@@ -613,7 +613,7 @@ int main( int argc, char* argv[] )
 )");
 
 
-static let include_paths  = String( " -Isrc -Ilib"      ); // TODO: Make this an array of paths?
+static let include_paths  = List<String>{ "src", "lib"  };
 static let dep_output_dir = String( "./build/dep"       );
 static let bin_output_dir = String( "./build/bin"       );
 static let libraries_dir  = String( "./lib"             );
@@ -832,6 +832,7 @@ file_private fun compile(
         Compiler compiler;
         String   compiler_flags;
         String   defines;
+        String   include_paths;
         u8       cpp_version;
         u8       optimization_level;
         bool     generate_compile_commands;
@@ -893,7 +894,7 @@ file_private fun compile(
                 ctx.compiler_flags,
                 ctx.defines,
                 ctx.optimization_level,
-                include_paths,
+                ctx.include_paths,
                 source_file.string(),
                 out_obj_path.string(),
                 out_dep_path.string() );
@@ -943,6 +944,16 @@ file_private fun compile(
         thread_results->at( thread_idx ) = OK;
     };
 
+    var ctx_include_paths = String();
+    for( let& path: include_paths )
+    {
+        ctx_include_paths += fmt( "-I{} ", path );
+    }
+    #if defined( __APPLE__ )
+    {
+        ctx_include_paths += "-I/opt/homebrew/include";
+    }
+    #endif
 
     // TODO: Spread the remaining files across all the threads rather than spawning a dedicated one
     let num_threads = min( Thread::hardware_concurrency(), cpp_paths.size() );
@@ -951,6 +962,7 @@ file_private fun compile(
         .compiler                   = project.compiler,
         .compiler_flags             = get_flags_from( target ),
         .defines                    = get_defines_from( target ),
+        .include_paths              = ctx_include_paths,
         .cpp_version                = project.cpp_version,
         .optimization_level         = target.optimization_level,
         .generate_compile_commands  = project.generate_compile_commands,
@@ -1103,6 +1115,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
         // The runtime doesn't seem to find system libraries stored in `/usr/local/lib`
         // (despite them linking fine) because that path is not in the @rpath.
         command += " -Wl,-rpath,/usr/local/lib";
+        command += " -L/opt/homebrew/lib";
     }
     #endif
 
