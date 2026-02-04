@@ -828,7 +828,6 @@ file_private fun compile(
 
     struct ThreadCtx
     {
-        u32      max_files_per_thread;
         Compiler compiler;
         String   compiler_flags;
         String   defines;
@@ -846,22 +845,16 @@ file_private fun compile(
         const u32               thread_idx,
         const StopToken         st,
         const ThreadCtx&        ctx,
-        const List<Path>&       cpp_paths,
+        const List<Path>        cpp_paths,
               List<ResultCode>* thread_results )
     {
         assert( thread_results );
         assert( thread_idx < thread_results->size() );
 
-        let start = thread_idx * ctx.max_files_per_thread;
-        let end   = min( start + ctx.max_files_per_thread, cpp_paths.size() );
-        assert( start < cpp_paths.size() );
-
-        for( var i = start; i < end; ++i )
+        for( let& source_file: cpp_paths )
         {
             if( st.stop_requested() )
                 return;
-
-            let& source_file = cpp_paths[ i ];
 
             assert( source_file.is_relative() && "Something weird happened gathering the paths." );
 
@@ -958,7 +951,6 @@ file_private fun compile(
     // TODO: Spread the remaining files across all the threads rather than spawning a dedicated one
     let num_threads = min( Thread::hardware_concurrency(), cpp_paths.size() );
     let thread_ctx = ThreadCtx {
-        .max_files_per_thread       = as<u32>( std::ceil( as<f32>( cpp_paths.size() ) / as<f32>( num_threads ) ) ),
         .compiler                   = project.compiler,
         .compiler_flags             = get_flags_from( target ),
         .defines                    = get_defines_from( target ),
@@ -975,15 +967,24 @@ file_private fun compile(
     var compile_threads = List<Thread>{};
     compile_threads.reserve( num_threads );
 
+    let max_files_per_thread = as<u32>( std::ceil( as<f32>( cpp_paths.size() ) / as<f32>( num_threads ) ) );
+
     var stop_src = StopSrc{};
     for( var i = 0u; i < num_threads; ++i )
     {
+        let start = i * max_files_per_thread;
+        let end   = min( start + max_files_per_thread, cpp_paths.size() );
+        assert( start < cpp_paths.size() );
+
+        // Copy the thread's slice into a separated list to avoid false sharing
+        let thread_paths = List< Path >{ cpp_paths.begin() + start, cpp_paths.begin() + end };
+
         compile_threads.emplace_back(
             compile_task,
             i,
             stop_src.get_token(),
             thread_ctx,
-            cpp_paths,
+            thread_paths,
             &thread_results );
     }
 
