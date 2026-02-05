@@ -842,15 +842,11 @@ file_private fun compile(
 
     // TODO: Add logging
     let compile_task = [](
-        const u32               thread_idx,
-        const StopToken         st,
-        const ThreadCtx&        ctx,
-        const List<Path>        cpp_paths,
-              List<ResultCode>* thread_results )
+        const ThreadCtx& ctx,
+        const List<Path> cpp_paths,
+        const StopToken  st,
+              StopSrc    ss )
     {
-        assert( thread_results );
-        assert( thread_idx < thread_results->size() );
-
         for( let& source_file: cpp_paths )
         {
             if( st.stop_requested() )
@@ -930,11 +926,9 @@ file_private fun compile(
 
             if( system( command.c_str() ) != OK )
             {
-                thread_results->at( thread_idx ) = COMPILATION_FAILED;
-                return;
+                ss.request_stop(); // Compilation has failed, stop all the other threads
             }
         }
-        thread_results->at( thread_idx ) = OK;
     };
 
     var ctx_include_paths = String();
@@ -981,21 +975,17 @@ file_private fun compile(
 
         compile_threads.emplace_back(
             compile_task,
-            i,
-            stop_src.get_token(),
             thread_ctx,
             thread_paths,
-            &thread_results );
+            stop_src.get_token(),
+            stop_src );
     }
 
-    for( var i = 0u; i < num_threads; ++i )
+    for( var& thread: compile_threads )
     {
-        compile_threads[i].join();
-        if( thread_results[i] != OK )
-        {
-            stop_src.request_stop();
-        }
+        thread.join();
     }
+
     return stop_src.stop_requested() ? COMPILATION_FAILED : OK;
 }
 
