@@ -129,7 +129,7 @@ project->add_dependency({
 - [x] Incremental builds
 - [ ] Multithreaded builds
     - [x] Basic unbalanced multithreading
-    - [ ] Logging
+    - [x] Logging
     - [ ] Balanced threads (perhaps a job system)
 - [ ] `test` command
 - [ ] Local dependency management
