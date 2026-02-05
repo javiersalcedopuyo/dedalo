@@ -48,7 +48,7 @@ reset:
 
 install:
 	$(MAKE) release
-	cp $(EXECUTABLE_NAME) /usr/local/bin
+	mv $(EXECUTABLE_NAME) /usr/local/bin
 	cp dedalo.cpp /usr/local/include
 
 uninstall:
