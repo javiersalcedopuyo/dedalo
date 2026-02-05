@@ -17,6 +17,7 @@
 
 // Multi-threading
 #include <thread>
+#include <mutex>
 #include <stop_token>
 using Thread    = std::thread;
 using StopSrc   = std::stop_source;
@@ -839,18 +840,29 @@ file_private fun compile(
         LTO      link_time_optimizations;
     };
 
+    [[ maybe_unused ]]
+    var logging_mutex = std::mutex{};
 
     // TODO: Add logging
-    let compile_task = [](
-        const ThreadCtx& ctx,
-        const List<Path> cpp_paths,
-        const StopToken  st,
-              StopSrc    ss )
+    let compile_task = [ &logging_mutex ](
+        const ThreadCtx&  ctx,
+        const List<Path>  cpp_paths,
+        const StopToken   st,
+              StopSrc     ss )
     {
+
         for( let& source_file: cpp_paths )
         {
             if( st.stop_requested() )
                 return;
+
+            #if defined( ENABLE_LOGS )
+            {
+                // FIXME: Is this the best way to do this?
+                std::lock_guard<std::mutex> lock( logging_mutex );
+                INFO( "\t- {}", source_file.string() );
+            }
+            #endif
 
             assert( source_file.is_relative() && "Something weird happened gathering the paths." );
 
@@ -955,7 +967,7 @@ file_private fun compile(
         .force_compilation          = force_compilation,
         .link_time_optimizations    = project.link_time_optimizations };
 
-    INFO( "Compiling {} source files with {} threads.", cpp_paths.size(), num_threads );
+    INFO( "Compiling {} source files with {} threads:", cpp_paths.size(), num_threads );
 
     var thread_results  = List<ResultCode>{ num_threads, OK };
     var compile_threads = List<Thread>{};
