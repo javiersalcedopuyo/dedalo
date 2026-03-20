@@ -47,7 +47,6 @@ using f32 = float;
 using f64 = double;
 
 using String = std::string;
-#define fmt std::format
 
 template<typename T>
 using List = std::vector<T>;
@@ -57,7 +56,18 @@ using Path = FS::path;
 #define as static_cast
 
 
-#define println(...) printf( "%s\n", fmt( __VA_ARGS__).c_str() )
+template< typename... Args >
+static inline fun fmt( std::format_string<Args...> fmt_str, Args&&... args ) -> String
+{
+    return std::format( fmt_str, std::forward<Args>( args )... );
+}
+
+
+template< typename... Args >
+static inline fun println( std::format_string<Args...> fmt_str, Args&&... args )
+{
+    printf( "%s\n", fmt( fmt_str, std::forward<Args>( args )... ).c_str() );
+}
 
 
  // TODO: Support MSVC macros

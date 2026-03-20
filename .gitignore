@@ -9,3 +9,4 @@ vendor/
 ddl.dSYM/
 .cache/
 *.bkp
+*.DS_Store
