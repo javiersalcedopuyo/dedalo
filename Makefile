@@ -8,7 +8,8 @@ CFLAGS = -std=c++20\
 		 -fno-rtti
 
 
-RELEASE_FLAGS = -O3 -DNDEBUG
+RELEASE_FLAGS = -O3 -DNDEBUG\
+				-Wno-assume
 DEBUG_FLAGS   = -MJ tmp.json\
 				-fsanitize=undefined,address\
 				-O0 -g

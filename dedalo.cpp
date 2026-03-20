@@ -1,5 +1,4 @@
 #include <cstdint>
-#include <cassert>
 #include <cstdio>
 #include <cmath>
 
@@ -74,8 +73,8 @@ static inline fun println( std::format_string<Args...> fmt_str, Args&&... args )
 #if defined( ENABLE_LOGS )
     #if defined( NDEBUG )
         #define INFO(...)                println( "[DEDALO] {}",    fmt(__VA_ARGS__) )
-        #define WARNING(...)
         #define ERROR(...)               println( "[DEDALO] ⛔ ERROR: {}",   fmt(__VA_ARGS__) )
+        #define WARNING(...)             ERROR( __VA_ARGS__ ) // On release, treat all warnings as errors
         #define UNIMPLEMENTED_MSG( ... )
     #else // NDEBUG
         #define INFO(...)                println( "💬 INFO [{} @ {} ln{}]: {}",    __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
@@ -92,23 +91,34 @@ static inline fun println( std::format_string<Args...> fmt_str, Args&&... args )
     #define UNIMPLEMENTED()
 #endif // ENABLE_LOGS
 
+#define PANIC(...) do{ ERROR( __VA_ARGS__ ); exit( 1 ); } while( false )
 
-#if defined( NDEBUG )
-#define PANIC(...) do\
-    {\
-        println( "💀 FATAL ERROR: {}", fmt(__VA_ARGS__) );\
-        abort();\
-    } while(0)
+#if __cplusplus >= 202302L
+    #define ASSUME( exp ) [[ assume( exp ) ]]
+#elif defined( __clang__ )
+    #define ASSUME( exp ) __builtin_assume( exp )
+#elif defined( __GNUC__ )
+    #define ASSUME( exp ) if( (exp) == false ) __builtin_unreachable()
+#elif defined( _MSC_VER )
+    #define ASSUME( exp ) __assume( exp )
 #else
-#define PANIC(...) do\
-    {\
-        println( "💀 FATAL ERROR [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) );\
-        abort();\
-    } while(0)
+    #define ASSUME( exp )
 #endif
 
 
-#define UNREACHABLE do { ERROR("Unreachable point reached!"); abort(); } while(0)
+#if defined( NDEBUG )
+//{
+    #define REQUIRE( exp )          ASSUME( exp )
+    #define REQUIRE_MSG( exp, msg ) ASSUME( exp )
+    #define UNREACHABLE             ASSUME( false )
+//}
+#else
+//{
+    #define REQUIRE( exp )          if( !(exp) ) PANIC( "Requirement '{}' was not met", #exp )
+    #define REQUIRE_MSG( exp, msg ) if( !(exp) ) PANIC( "Requirement '{}' was not met: {}", #exp, msg )
+    #define UNREACHABLE             PANIC( "Reached unreachable code." )
+//}
+#endif
 
 
 enum struct Compiler: u8 { Clang, GCC, MSVC };
@@ -268,8 +278,8 @@ struct Project
     // TODO: Add more validation
     constexpr fun add_dependency( const Dependency& dependency )
     {
-        assert( dependency.name != "UNNAMED" );
-        assert( !dependency.name.empty() );
+        REQUIRE( dependency.name != "UNNAMED" );
+        REQUIRE( !dependency.name.empty() );
 
         let iter = std::find_if(
             dependencies.begin(),
@@ -291,8 +301,8 @@ struct Project
     // TODO: Support local frameworks
     constexpr fun add_framework( const Framework& framework )
     {
-        assert( framework.name != "UNNAMED" );
-        assert( !framework.name.empty() );
+        REQUIRE( framework.name != "UNNAMED" );
+        REQUIRE( !framework.name.empty() );
 
         // This is just for the linker so I don't really care if it already exists
         frameworks.push_back( framework );
@@ -314,9 +324,9 @@ struct Project
     // TODO: Add more validation
     constexpr fun add_target( const Target& target )
     {
-        assert( target.name != "UNNAMED" );
-        assert( target.name != "All" && "`All` is a reserved target name" );
-        assert( !target.name.empty() );
+        REQUIRE( target.name != "UNNAMED" );
+        REQUIRE_MSG( target.name != "All", "`All` is a reserved target name" );
+        REQUIRE( !target.name.empty() );
 
         // We allow overwriting targets so people can add their own "Debug" and "Release"
         if( var* old_target = find_target( target.name ) )
@@ -540,7 +550,7 @@ constexpr fun max( const auto a, const auto b ) ->  auto { return a > b ? a : b;
 
 file_private fun trim( String* input )
 {
-    assert( input );
+    REQUIRE( input );
     // Left trim
     {
         var iter = std::find_if_not( input->begin(), input->end(), [](char c){ return isspace(c); } );
@@ -584,7 +594,7 @@ static let new_project_template = String(R"(
 extern "C"
 void build( Project* project, const MainArgvSlice args )
 {
-    assert( project );
+    REQUIRE( project );
 
     // "Debug" and "Release" targets are provided by default.
     // You can override them by creating a new target with the same name.
@@ -663,7 +673,7 @@ fun init() -> ResultCode
         FS::create_directory( "src" );
         {
             var* main_file = fopen( "src/main.cpp", "w" );
-            assert( main_file );
+            REQUIRE( main_file );
             fputs( new_main_file_template.c_str(), main_file );
             fclose( main_file );
         }
@@ -672,7 +682,7 @@ fun init() -> ResultCode
     // Init build.cpp
     {
         var* build_file = fopen( "build.cpp", "w" );
-        assert( build_file );
+        REQUIRE( build_file );
 
         // Replace the project's name with the current folder's
         let current_folder_name = FS::current_path().stem().string();
@@ -695,7 +705,7 @@ file_private fun gather_files(
     const List<Path>&   excluded_paths,
           List<Path>*   gathered_paths )
 {
-    assert( gathered_paths );
+    REQUIRE( gathered_paths );
 
     if( contains( excluded_paths, in_path ) )
         return;
@@ -728,7 +738,7 @@ static constexpr fun get_compiler_name( const Compiler compiler ) -> String
     {
         case Compiler::Clang: return "clang++";
         case Compiler::GCC:   return "g++";
-        case Compiler::MSVC:  PANIC( "No support for MSVC yet" );          return "CL";
+        case Compiler::MSVC:  UNIMPLEMENTED_MSG( "No support for MSVC yet" ); return "CL";
         default:              UNREACHABLE;
     }
 }
@@ -806,8 +816,8 @@ file_private fun needs_recompiling(
             {
                 if( is_first_line and i == 0 )
                 {
-                    assert( file_paths.size() >= 2 );
-                    assert( file_paths[0] == obj_path.string() + ":" );
+                    REQUIRE( file_paths.size() >= 2 );
+                    REQUIRE( file_paths[0] == obj_path.string() + ":" );
                     is_first_line = false;
                     continue;
                 }
@@ -874,7 +884,7 @@ file_private fun compile(
             }
             #endif
 
-            assert( source_file.is_relative() && "Something weird happened gathering the paths." );
+            REQUIRE_MSG( source_file.is_relative(), "Something weird happened gathering the paths." );
 
             // FIXME: There must be a better way to do this. Perhaps with string views?
             var src_relative_cpp_path = String();
@@ -990,7 +1000,7 @@ file_private fun compile(
     {
         let start = i * max_files_per_thread;
         let end   = min( start + max_files_per_thread, cpp_paths.size() );
-        assert( start < cpp_paths.size() );
+        REQUIRE( start < cpp_paths.size() );
 
         // Copy the thread's slice into a separated list to avoid false sharing
         let thread_paths = List< Path >{ cpp_paths.begin() + start, cpp_paths.begin() + end };
@@ -1027,7 +1037,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
         var obj_paths = List<Path>();
         gather_files( obj_output_dir, {".o"}, {}, &obj_paths );
 
-        assert( !obj_paths.empty() && "No compiled binaries to link?" );
+        REQUIRE_MSG( !obj_paths.empty(), "No compiled binaries to link?" );
 
         for( let& path: obj_paths )
         {
@@ -1055,10 +1065,10 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
         {
             case Linking::Static:
             {
-                assert( FS::is_directory( lib_dir ) );
+                REQUIRE( FS::is_directory( lib_dir ) );
 
                 lib_path += ".a";
-                assert( FS::is_regular_file( lib_path ) );
+                REQUIRE( FS::is_regular_file( lib_path ) );
 
                 command += fmt( " {}", lib_path );
                 break;
@@ -1180,7 +1190,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
 
 file_private fun compile_config( bool* has_changed ) -> ResultCode
 {
-    assert( has_changed );
+    REQUIRE( has_changed );
 
     TIME_SCOPE( "Compiling the build config" );
 
@@ -1217,7 +1227,7 @@ file_private fun build_compile_commands_json()
     gather_files( json_temp_dir, {".json"}, {}, &json_paths );
 
     var* cmp_cmd_json = fopen( "compile_commands.json", "w" );
-    assert( cmp_cmd_json );
+    REQUIRE( cmp_cmd_json );
     defer( fclose( cmp_cmd_json ) );
 
     fputs( "[\n", cmp_cmd_json );
@@ -1234,8 +1244,8 @@ file_private fun build_compile_commands_json()
         defer( free( line ) );
 
         getline( &line, &line_len, part );
-        assert( line );
-        assert( line_len > 0 );
+        REQUIRE( line );
+        REQUIRE( line_len > 0 );
 
         fputs( line, cmp_cmd_json );
     }
@@ -1274,7 +1284,7 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
 
     var project = Project();
     build_cfg( &project, args );
-    assert( project.name != "UNNAMED" );
+    REQUIRE( project.name != "UNNAMED" );
 
     if( project.compiler != Compiler::Clang and project.generate_compile_commands )
     {
@@ -1305,7 +1315,7 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
             for( var i = 0u; i < target->pre_build_scripts.size(); ++i )
             {
                 let script = target->pre_build_scripts[i];
-                assert( script.func != nullptr );
+                REQUIRE( script.func != nullptr );
 
                 TIME_SCOPE( script.name );
 
@@ -1339,7 +1349,7 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
             for( var i = 0u; i < target->post_build_scripts.size(); ++i )
             {
                 let script = target->post_build_scripts[i];
-                assert( script.func != nullptr );
+                REQUIRE( script.func != nullptr );
 
                 TIME_SCOPE( script.name );
 
