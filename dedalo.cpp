@@ -309,9 +309,10 @@ struct Project
     }
 #endif // __APPLE__
 
-    constexpr fun find_target( const String& name ) -> Target*
+    [[nodiscard]]
+    constexpr fun find_target( const String& name ) const -> const Target*
     {
-        let iter = std::find_if( targets.begin(), targets.end(), [ name ]( const Target& target )
+        let iter = std::ranges::find_if( targets, [ name ]( const Target& target ) -> bool
         {
             return target.name == name;
         });
@@ -319,6 +320,12 @@ struct Project
         return iter == targets.end()
             ? nullptr
             : &(*iter);
+    }
+
+    [[nodiscard]]
+    constexpr fun find_target( const String& name ) -> Target*
+    {
+        return const_cast<Target*>( as<const Project*>(this)->find_target(name) );
     }
 
     // TODO: Add more validation
