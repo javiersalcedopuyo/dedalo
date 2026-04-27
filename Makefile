@@ -14,6 +14,21 @@ DEBUG_FLAGS   = -MJ tmp.json\
 				-fsanitize=undefined,address\
 				-O0 -g
 
+CLANG_TIDY_CHECKS = bugprone-*,\
+					clang-analyzer-*,\
+					misc-*,\
+					modernize-*,\
+					performance-*,\
+					-bugprone-command-processor,\
+					-bugprone-lambda-function-name,\
+					-clang-diagnostic-c2y-extensions,\
+					-misc-non-private-member-variables-in-classes,\
+					-misc-use-anonymous-namespace,\
+					-misc-use-internal-linkage,\
+					-modernize-use-designated-initializers,\
+					-modernize-avoid-c-style-cast
+
+.PHONY: run rebuild  release debug clean reset install uninstall tidy
 
 ddl: dedalo.cpp
 	@echo "Compiling..."
@@ -55,3 +70,6 @@ install:
 uninstall:
 	rm /usr/local/bin/$(EXECUTABLE_NAME)
 	rm /usr/local/include/dedalo.cpp
+
+tidy:
+	clang-tidy dedalo.cpp -p . --checks='$(CLANG_TIDY_CHECKS)'

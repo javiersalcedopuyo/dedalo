@@ -1,14 +1,19 @@
+// C stuff
+#include <cstddef>
+#include <cstdlib>
+#include <cerrno>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cmath>
 
 #if !defined( __APPLE__ )
-    #include <cerrno>
     #define ELAST 256
 #endif // !__APPLE__
 
 // STL bloat
 #include <string>
+#include <string_view>
 #include <format>
 #include <vector>
 #include <filesystem>
@@ -18,6 +23,7 @@
 #include <thread>
 #include <mutex>
 #include <stop_token>
+using MutexLock = std::scoped_lock<std::mutex>;
 using Thread    = std::thread;
 using StopSrc   = std::stop_source;
 using StopToken = std::stop_token;
@@ -281,13 +287,10 @@ struct Project
         REQUIRE( dependency.name != "UNNAMED" );
         REQUIRE( !dependency.name.empty() );
 
-        let iter = std::find_if(
-            dependencies.begin(),
-            dependencies.end(),
-            [ new_name = dependency.name ]( const Dependency& dep )
-            {
-                return dep.name == new_name;
-            });
+        let iter = std::ranges::find_if( dependencies, [ new_name = dependency.name ]( const Dependency& dep ) -> bool
+        {
+            return dep.name == new_name;
+        });
 
         if( iter != dependencies.end() )
         {
@@ -364,14 +367,14 @@ struct Project
     };
 
     // Adds a pre-build script common to all targets
-    constexpr fun add_pre_build_script( ScriptPtr script )
+    constexpr fun add_pre_build_script( const ScriptPtr& script )
     {
         for( var& target: targets )
             target.pre_build_scripts.push_back( script );
     }
 
     // Adds a post-build script common to all targets
-    constexpr fun add_post_build_script( ScriptPtr script )
+    constexpr fun add_post_build_script( const ScriptPtr& script )
     {
         for( var& target: targets )
             target.post_build_scripts.push_back( script );
@@ -493,7 +496,7 @@ file_private fun is_directory_empty( const Path& path) -> bool
     return true;
 }
 
-enum [[nodiscard]] ResultCode
+enum [[nodiscard]] ResultCode: i8
 {
     UNKNOWN_ERROR       = -1,
     OK                  = 0,
@@ -549,7 +552,7 @@ private:
 #define DO_CONCATENATE( l, r )      DO_CONCATENATE_2( l, r )
 #define DO_CONCATENATE_2( l, r )    l##r
 
-#define defer( f ) const auto CONCATENATE( _deferred, __COUNTER__ ) = Deferrable( [&](){ f; } );
+#define defer( f ) const auto CONCATENATE( _deferred, __COUNTER__ ) = Deferrable( [&]() -> void { f; } );
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 constexpr fun min( const auto a, const auto b ) ->  auto { return a < b ? a : b; }
@@ -560,13 +563,13 @@ file_private fun trim( String* input )
     REQUIRE( input );
     // Left trim
     {
-        var iter = std::find_if_not( input->begin(), input->end(), [](char c){ return isspace(c); } );
+        var iter = std::ranges::find_if_not( *input, [](char c) -> bool { return isspace(c); } );
         input->erase( input->begin(), iter );
     }
     // right trim
     {
-        var iter = std::find_if_not( input->rbegin(), input->rend(), [](char c){ return isspace(c); } );
-        input->erase( iter.base(), input->end() );
+        var iter = std::ranges::find_if_not( *input, [](char c) -> bool { return isspace(c); } );
+        input->erase( iter, input->end() );
     }
 }
 
@@ -771,9 +774,9 @@ static constexpr fun get_sanitizer_flags( const Target& target ) -> String
 static constexpr fun get_flags_from( const Target& target ) -> String
 {
     var flags = String();
-    for( var i = 0u; i < target.compiler_flags.size(); ++i )
+    for( let& flag: target.compiler_flags )
     {
-        flags += " -" + target.compiler_flags[i];
+        flags += " -" + flag;
     }
     return flags + get_sanitizer_flags( target );
 }
@@ -872,10 +875,11 @@ file_private fun compile(
 
     // TODO: Add logging
     let compile_task = [ &logging_mutex ](
-        const ThreadCtx&  ctx,
-        const List<Path>  cpp_paths,
-        const StopToken   st,
-              StopSrc     ss )
+        const ThreadCtx&   ctx,
+        const List<Path>&  cpp_paths,
+        const StopToken&   st,
+              StopSrc      ss )
+    -> void
     {
 
         for( let& source_file: cpp_paths )
@@ -886,7 +890,7 @@ file_private fun compile(
             #if defined( ENABLE_LOGS )
             {
                 // FIXME: Is this the best way to do this?
-                std::lock_guard<std::mutex> lock( logging_mutex );
+                let lock = MutexLock{ logging_mutex };
                 INFO( "\t- {}", source_file.string() );
             }
             #endif
@@ -1005,8 +1009,8 @@ file_private fun compile(
     var stop_src = StopSrc{};
     for( var i = 0u; i < num_threads; ++i )
     {
-        let start = i * max_files_per_thread;
-        let end   = min( start + max_files_per_thread, cpp_paths.size() );
+        let start = as<ptrdiff_t>( i * max_files_per_thread );
+        let end   = as<ptrdiff_t>( min( start + max_files_per_thread, cpp_paths.size() ) );
         REQUIRE( start < cpp_paths.size() );
 
         // Copy the thread's slice into a separated list to avoid false sharing
