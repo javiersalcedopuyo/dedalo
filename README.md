@@ -1,5 +1,7 @@
 # dedalo.cpp
 
+[![Casual Maintenance Intended](https://casuallymaintained.tech/badge.svg)](https://casuallymaintained.tech/)
+
 ![logo](logo.png)
 
 A strongly opinionated, Clang-first build system for C++.
