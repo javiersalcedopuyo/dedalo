@@ -7,6 +7,8 @@ CFLAGS = -std=c++20\
 		 -fno-exceptions\
 		 -fno-rtti
 
+MAN_PAGE_PATH = /usr/local/share/man/man1
+
 
 RELEASE_FLAGS = -O3 -DNDEBUG\
 				-Wno-assume
@@ -28,8 +30,6 @@ CLANG_TIDY_CHECKS = bugprone-*,\
 					-modernize-use-designated-initializers,\
 					-modernize-avoid-c-style-cast
 
-.PHONY: run rebuild  release debug clean reset install uninstall tidy
-
 ddl: dedalo.cpp
 	@echo "Compiling..."
 	@time $(CC) $(CFLAGS) $(DEBUG_FLAGS) dedalo.cpp -o $(EXECUTABLE_NAME)
@@ -37,6 +37,8 @@ ddl: dedalo.cpp
 	@cat tmp.json >> compile_commands.json
 	@echo ']' >> compile_commands.json
 	@rm tmp.json
+
+.PHONY: run rebuild  release debug clean reset install uninstall tidy
 
 run: dedalo
 	./$(EXECUTABLE_NAME) run
@@ -66,10 +68,13 @@ install:
 	$(MAKE) release
 	mv $(EXECUTABLE_NAME) /usr/local/bin
 	cp dedalo.cpp /usr/local/include
+	mkdir -p $(MAN_PAGE_PATH)
+	cp ddl.1 $(MAN_PAGE_PATH)
 
 uninstall:
 	rm /usr/local/bin/$(EXECUTABLE_NAME)
 	rm /usr/local/include/dedalo.cpp
+	rm $(MAN_PAGE_PATH)/ddl.1
 
 tidy:
 	clang-tidy dedalo.cpp -p . --checks='$(CLANG_TIDY_CHECKS)'

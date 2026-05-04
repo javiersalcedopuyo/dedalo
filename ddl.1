@@ -1,0 +1,151 @@
+.\" Manpage for ddl.
+.TH DDL 1 "May 4, 2026" "v0.2.0" "User Commands"
+.SH NAME
+ddl \- Dedalo: A strongly opinionated C++ build system
+
+.SH SYNOPSIS
+.B ddl
+[\fICOMMAND\fR] [\fIARGUMENTS_FOR_BUILD_CPP\fR]
+
+.SH DESCRIPTION
+Dedalo is a strongly opinionated C++ build system that allows you to describe, configure, and build C++ projects using only a single \fBbuild.cpp\fR config file and a C++ compiler with support for at least C++20. No scripting, data, or domain specific languages required.
+
+.SH COMMANDS
+.TP
+.B \-v, \-\-version
+Prints the version number.
+
+.TP
+.B init
+Creates the \fBbuild.cpp\fR file and the directory structure in the current directory, using the current directory name as the project name.
+
+.TP
+.B build [\fITARGET_NAME\fR]
+Builds the specified target. If no \fITARGET_NAME\fR is provided, builds the project's default target.
+
+.TP
+.B run [\fITARGET_NAME\fR]
+Builds and immediately runs the specified target. If no \fITARGET_NAME\fR is provided, builds and runs the project's default target.
+
+.TP
+.B clean
+Deletes the \fB./build\fR directory.
+
+.TP
+.B test
+Builds and runs the testing target. Note: This command is currently unimplemented.
+
+.SH EXAMPLES
+.SS Creating a new project
+.nf
+$ mkdir my_project
+$ cd my_project
+$ ddl init
+$ ddl run
+.fi
+
+This generates the following directory structure, builds, and runs the project, which prints "Hello, World!".
+
+.nf
+.
+├── build
+│   ├── bin
+│   │   └── my_project
+│   ├── build_script.so
+│   ├── dep
+│   │   └── main.cpp.d
+│   ├── json
+│   │   └── main.cpp.json
+│   └── obj
+│       └── main.cpp.o
+├── build.cpp
+├── compile_commands.json
+├── lib
+└── src
+    └── main.cpp
+.fi
+
+.SS Adding a new target (build.cpp)
+.nf
+project->add_target({
+    .name               = "MyTarget",
+    .optimization_level = 1,
+    .sanitizers         = ASan | UBSan,
+    .defines            = { "DEBUG", "MY_DEFINE" },
+    .compiler_flags     = { "g", "Wall", "Werror", "pedantic" }
+});
+.fi
+
+.SS Adding libraries and dependencies (build.cpp)
+.nf
+// Dynamic linking with a system copy by default
+project->add_dependency({ .name = "lib_name" });
+
+// Dynamic linking with a system copy explicitly
+project->add_dependency({
+    .name     = "lib_name",
+    .linking  = Linking::Dynamic,
+    .location = Location::System
+});
+
+// Dynamic linking with a local copy
+project->add_dependency({
+    .name     = "lib_name",
+    .linking  = Linking::Dynamic,
+    .location = Location::Local
+});
+
+// Static linking (location is ignored, assumed Local)
+project->add_dependency({
+    .name    = "lib_name",
+    .linking = Linking::Static
+});
+
+// Single Header dependency
+project->add_dependency({
+    .name    = "lib_name",
+    .linking = Linking::SingleHeader
+});
+.fi
+
+.SS Adding pre/post build scripts (build.cpp)
+.nf
+bool foo() { /* do something */      return true; }
+bool bar() { /* do something else */ return true; }
+
+project->add_pre_build_script({ .func = foo, .name = "Foo" });
+project->add_post_build_script({ .func = bar, .name = "Bar" });
+.fi
+
+.SH FILES
+.TP
+.B build.cpp
+The configuration file where the project is defined.
+
+.TP
+.B ./build
+The output directory containing binaries, object files, and dependency information.
+
+.TP
+.B lib/
+Directory for local libraries and single-header dependencies.
+
+.TP
+.B src/
+Directory for source code.
+
+.SH SEE ALSO
+g++, clang++, make
+
+.SH BUGS
+Only Clang and GCC are supported currently.
+
+The test command is currently unimplemented.
+
+macOS local dynamic linking relies on the install name matching the file name.
+
+.SH VERSION
+v0.2.0
+
+.SH AUTHOR
+Javier Salcedo
