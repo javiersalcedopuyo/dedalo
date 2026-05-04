@@ -148,6 +148,9 @@ struct Version
 };
 
 
+file_private constexpr let version = Version{ 0,2,0 };
+
+
 struct ScriptPtr
 {
     bool (*func)() = nullptr;
@@ -1430,7 +1433,7 @@ fun main( i32 argc, char* argv[] ) -> i32
     {
         return init();
     }
-    else if( cmd == "build" or cmd == "run" )
+    else if( cmd == "build" or cmd == "run" or cmd == "test" )
     {
         var target = String("");
         let run_after_build = ( cmd == "run" );
@@ -1456,9 +1459,9 @@ fun main( i32 argc, char* argv[] ) -> i32
     {
         return clean();
     }
-    else if( cmd == "test" )
+    else if( cmd == "--version" or cmd == "-v" )
     {
-        return test();
+        println( "Dedalo v{}.{}.{}", version.major, version.minor, version.patch );
     }
     else
     {
