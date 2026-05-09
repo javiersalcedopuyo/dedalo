@@ -18,6 +18,7 @@
 #include <vector>
 #include <filesystem>
 #include <algorithm>
+#include <ranges>
 
 // Multi-threading
 #include <thread>
@@ -563,16 +564,19 @@ constexpr fun max( const auto a, const auto b ) ->  auto { return a > b ? a : b;
 
 file_private fun trim( String* input )
 {
+    using std::ranges::find_if_not;
+    using std::ranges::views::reverse;
+
     REQUIRE( input );
     // Left trim
     {
-        var iter = std::ranges::find_if_not( *input, [](char c) -> bool { return isspace(c); } );
+        let iter = find_if_not( *input, [](char c) -> bool { return isspace(c); } );
         input->erase( input->begin(), iter );
     }
     // right trim
     {
-        var iter = std::ranges::find_if_not( *input, [](char c) -> bool { return isspace(c); } );
-        input->erase( iter, input->end() );
+        let iter = find_if_not( reverse( *input ), [](char c) -> bool { return isspace(c); } );
+        input->erase( iter.base(), input->end() );
     }
 }
 
